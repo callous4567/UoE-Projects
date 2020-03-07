@@ -1,0 +1,12 @@
+Orbital parameter datafile. Provide orbital parameters in vertical list format.
+Example.
+
+body-name body-mass x y z x-vel y-vel z-vel
+
+NOTE coordinate system center is arbitrary (0,0,0) but system should work relative amongst bodies.
+
+Body given title "sun" contains option to have system translated such that sun initial position is zero point of entire system.
+
+-------------------------------
+SOLAR BODIES INITIAL CONDITIONS
+-------------------------------

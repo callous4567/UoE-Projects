@@ -1,0 +1,110 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN">
+<html><head><title>Python: module boxsim</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+</head><body bgcolor="#f0f0f8">
+
+<table width="100%" cellspacing=0 cellpadding=2 border=0 summary="heading">
+<tr bgcolor="#7799ee">
+<td valign=bottom>&nbsp;<br>
+<font color="#ffffff" face="helvetica, arial">&nbsp;<br><big><big><strong>boxsim</strong></big></big></font></td
+><td align=right valign=bottom
+><font color="#ffffff" face="helvetica, arial"><a href=".">index</a><br><a href="file:/home/callous/Documents/pycharm/WORKSHOP%202/boxsim.py">/home/callous/Documents/pycharm/WORKSHOP 2/boxsim.py</a></font></td></tr></table>
+    <p></p>
+<p>
+<table width="100%" cellspacing=0 cellpadding=2 border=0 summary="section">
+<tr bgcolor="#aa55cc">
+<td colspan=3 valign=bottom>&nbsp;<br>
+<font color="#ffffff" face="helvetica, arial"><big><strong>Modules</strong></big></font></td></tr>
+    
+<tr><td bgcolor="#aa55cc"><tt>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</tt></td><td>&nbsp;</td>
+<td width="100%"><table width="100%" summary="list"><tr><td width="25%" valign=top><a href="matplotlib.animation.html">matplotlib.animation</a><br>
+<a href="numpy.html">numpy</a><br>
+</td><td width="25%" valign=top><a href="matplotlib.pyplot.html">matplotlib.pyplot</a><br>
+<a href="matplotlib.ticker.html">matplotlib.ticker</a><br>
+</td><td width="25%" valign=top><a href="random.html">random</a><br>
+<a href="sys.html">sys</a><br>
+</td><td width="25%" valign=top><a href="time.html">time</a><br>
+</td></tr></table></td></tr></table><p>
+<table width="100%" cellspacing=0 cellpadding=2 border=0 summary="section">
+<tr bgcolor="#ee77aa">
+<td colspan=3 valign=bottom>&nbsp;<br>
+<font color="#ffffff" face="helvetica, arial"><big><strong>Classes</strong></big></font></td></tr>
+    
+<tr><td bgcolor="#ee77aa"><tt>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</tt></td><td>&nbsp;</td>
+<td width="100%"><dl>
+<dt><font face="helvetica, arial"><a href="builtins.html#object">builtins.object</a>
+</font></dt><dd>
+<dl>
+<dt><font face="helvetica, arial"><a href="boxsim.html#particle">particle</a>
+</font></dt></dl>
+</dd>
+</dl>
+ <p>
+<table width="100%" cellspacing=0 cellpadding=2 border=0 summary="section">
+<tr bgcolor="#ffc8d8">
+<td colspan=3 valign=bottom>&nbsp;<br>
+<font color="#000000" face="helvetica, arial"><a name="particle">class <strong>particle</strong></a>(<a href="builtins.html#object">builtins.object</a>)</font></td></tr>
+    
+<tr bgcolor="#ffc8d8"><td rowspan=2><tt>&nbsp;&nbsp;&nbsp;</tt></td>
+<td colspan=2><tt><a href="#particle">particle</a>(xyz,&nbsp;vel)<br>
+&nbsp;<br>
+#&nbsp;Defines&nbsp;a&nbsp;<a href="#particle">particle</a>&nbsp;via:&nbsp;hey&nbsp;=&nbsp;<a href="#particle">particle</a>([x,y,z],&nbsp;[vx,&nbsp;vy,&nbsp;vz])<br>
+#&nbsp;<a href="#particle">particle</a>.<a href="#particle-iterate">iterate</a>()&nbsp;iterates&nbsp;by&nbsp;a&nbsp;hard-defined&nbsp;timestep,&nbsp;assuming&nbsp;no&nbsp;acceleration&nbsp;(for&nbsp;simulation)<br>
+#&nbsp;<a href="#particle">particle</a>.<a href="#particle-image">image</a>()&nbsp;provides&nbsp;an&nbsp;image&nbsp;within&nbsp;the&nbsp;cube&nbsp;(pos_max,&nbsp;pos_max,&nbsp;pos_max)<br>
+#&nbsp;<a href="#particle">particle</a>.distance()&nbsp;provides&nbsp;distance&nbsp;to&nbsp;origin&nbsp;0,0,0<br>
+#&nbsp;<a href="#particle">particle</a>.<a href="#particle-image_closest">image_closest</a>()&nbsp;returns&nbsp;the&nbsp;closest&nbsp;image&nbsp;to&nbsp;the&nbsp;origin&nbsp;(by&nbsp;distance)<br>
+#&nbsp;URGENT&nbsp;NOTE&nbsp;WORTH&nbsp;READING&nbsp;---&gt;&gt;&gt;&nbsp;all&nbsp;objects&nbsp;returned&nbsp;are&nbsp;new&nbsp;<a href="#particle">particle</a>&nbsp;objects.<br>
+#&nbsp;Old&nbsp;<a href="builtins.html#object">object</a>&nbsp;editing&nbsp;is&nbsp;not&nbsp;done&nbsp;due&nbsp;to&nbsp;issues&nbsp;in&nbsp;the&nbsp;graphing&nbsp;iterator&nbsp;(<a href="builtins.html#object">object</a>&nbsp;NoneType&nbsp;error&nbsp;after&nbsp;exactly&nbsp;three&nbsp;iterations.)<br>&nbsp;</tt></td></tr>
+<tr><td>&nbsp;</td>
+<td width="100%">Methods defined here:<br>
+<dl><dt><a name="particle-__init__"><strong>__init__</strong></a>(self, xyz, vel)</dt><dd><tt>Initialize&nbsp;self.&nbsp;&nbsp;See&nbsp;help(type(self))&nbsp;for&nbsp;accurate&nbsp;signature.</tt></dd></dl>
+
+<dl><dt><a name="particle-image"><strong>image</strong></a>(self)</dt><dd><tt>#&nbsp;Images&nbsp;<a href="#particle">particle</a>&nbsp;to&nbsp;produce&nbsp;new&nbsp;one.&nbsp;Functionality&nbsp;is&nbsp;that:&nbsp;new_particle&nbsp;=&nbsp;<a href="#particle">particle</a>.<a href="#particle-image">image</a>()<br>
+#&nbsp;For&nbsp;each&nbsp;vector&nbsp;component,&nbsp;takes&nbsp;ratio&nbsp;of&nbsp;component&nbsp;to&nbsp;pos_max&nbsp;(length&nbsp;of&nbsp;cube)&nbsp;and&nbsp;floors&nbsp;this&nbsp;value...<br>
+#&nbsp;Once&nbsp;floored,&nbsp;it&nbsp;subtracts&nbsp;the&nbsp;product&nbsp;of&nbsp;this&nbsp;"scale&nbsp;factor"&nbsp;and&nbsp;the&nbsp;pos_max,&nbsp;forcing&nbsp;an&nbsp;image&nbsp;in&nbsp;the&nbsp;cube.</tt></dd></dl>
+
+<dl><dt><a name="particle-image_closest"><strong>image_closest</strong></a>(self)</dt><dd><tt>#&nbsp;Finds&nbsp;the&nbsp;image&nbsp;closest&nbsp;to&nbsp;the&nbsp;origin&nbsp;and&nbsp;provides&nbsp;a&nbsp;new&nbsp;<a href="#particle">particle</a>&nbsp;<a href="builtins.html#object">object</a>.</tt></dd></dl>
+
+<dl><dt><a name="particle-iterate"><strong>iterate</strong></a>(self)</dt><dd><tt>#&nbsp;Quick&nbsp;iterate&nbsp;step&nbsp;based&nbsp;on&nbsp;velocity&nbsp;and&nbsp;timestep.&nbsp;New&nbsp;pos&nbsp;=&nbsp;pos_0&nbsp;+&nbsp;v*timestep.<br>
+#&nbsp;Note,&nbsp;depreciated&nbsp;use&nbsp;of&nbsp;"if/for/etc"&nbsp;loops&nbsp;instead&nbsp;of&nbsp;using&nbsp;the&nbsp;added&nbsp;"image"&nbsp;method.<br>
+#&nbsp;Works&nbsp;fine&nbsp;for&nbsp;simulation,&nbsp;so&nbsp;it's&nbsp;been&nbsp;kept.&nbsp;I'm&nbsp;lazy&nbsp;:-:</tt></dd></dl>
+
+<hr>
+Data descriptors defined here:<br>
+<dl><dt><strong>__dict__</strong></dt>
+<dd><tt>dictionary&nbsp;for&nbsp;instance&nbsp;variables&nbsp;(if&nbsp;defined)</tt></dd>
+</dl>
+<dl><dt><strong>__weakref__</strong></dt>
+<dd><tt>list&nbsp;of&nbsp;weak&nbsp;references&nbsp;to&nbsp;the&nbsp;object&nbsp;(if&nbsp;defined)</tt></dd>
+</dl>
+</td></tr></table></td></tr></table><p>
+<table width="100%" cellspacing=0 cellpadding=2 border=0 summary="section">
+<tr bgcolor="#eeaa77">
+<td colspan=3 valign=bottom>&nbsp;<br>
+<font color="#ffffff" face="helvetica, arial"><big><strong>Functions</strong></big></font></td></tr>
+    
+<tr><td bgcolor="#eeaa77"><tt>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</tt></td><td>&nbsp;</td>
+<td width="100%"><dl><dt><a name="-parti_gen"><strong>parti_gen</strong></a>()</dt><dd><tt>#&nbsp;Generates&nbsp;"number"&nbsp;random&nbsp;particles&nbsp;in&nbsp;an&nbsp;ndarray,&nbsp;with&nbsp;element&nbsp;0&nbsp;being&nbsp;the&nbsp;particles.</tt></dd></dl>
+ <dl><dt><a name="-parti_iterator"><strong>parti_iterator</strong></a>(matrix)</dt><dd><tt>#&nbsp;Iterates&nbsp;<a href="#particle">particle</a>&nbsp;matrix&nbsp;according&nbsp;to&nbsp;iterate&nbsp;function&nbsp;in&nbsp;<a href="#particle">particle</a>&nbsp;class</tt></dd></dl>
+ <dl><dt><a name="-randgen"><strong>randgen</strong></a>()</dt><dd><tt>#&nbsp;Generates&nbsp;random&nbsp;<a href="#particle">particle</a>,&nbsp;x&nbsp;between&nbsp;0&nbsp;and&nbsp;pos_max,&nbsp;and&nbsp;velocity&nbsp;0&nbsp;and&nbsp;+-vel_max.&nbsp;Integer&nbsp;wise.</tt></dd></dl>
+ <dl><dt><a name="-time_delay"><strong>time_delay</strong></a>(text)</dt><dd><tt>#&nbsp;print()&nbsp;except&nbsp;it&nbsp;delays&nbsp;release&nbsp;of&nbsp;characters&nbsp;individually&nbsp;and&nbsp;makes&nbsp;the&nbsp;script&nbsp;look&nbsp;smoother&nbsp;on&nbsp;display.<br>
+#&nbsp;Change&nbsp;arguments&nbsp;for&nbsp;numbertime&nbsp;to&nbsp;0,0&nbsp;if&nbsp;you&nbsp;intend&nbsp;to&nbsp;do&nbsp;this&nbsp;vector&nbsp;stuff&nbsp;for&nbsp;decimal&nbsp;vectors&nbsp;instead&nbsp;of&nbsp;integer&nbsp;vectors...&nbsp;printing&nbsp;can&nbsp;take&nbsp;a&nbsp;while&nbsp;otherwise.</tt></dd></dl>
+ <dl><dt><a name="-xyz_getter"><strong>xyz_getter</strong></a>(pamat)</dt><dd><tt>#&nbsp;Forms&nbsp;list&nbsp;of&nbsp;XY&nbsp;(and&nbsp;z)&nbsp;values&nbsp;for&nbsp;the&nbsp;<a href="#particle">particle</a>&nbsp;matrix.</tt></dd></dl>
+</td></tr></table><p>
+<table width="100%" cellspacing=0 cellpadding=2 border=0 summary="section">
+<tr bgcolor="#55aa55">
+<td colspan=3 valign=bottom>&nbsp;<br>
+<font color="#ffffff" face="helvetica, arial"><big><strong>Data</strong></big></font></td></tr>
+    
+<tr><td bgcolor="#55aa55"><tt>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</tt></td><td>&nbsp;</td>
+<td width="100%"><strong>coord</strong> = array([5., 5., 5.])<br>
+<strong>coords</strong> = '5,5,5'<br>
+<strong>coordsplit</strong> = ['5', '5', '5']<br>
+<strong>number</strong> = 1<br>
+<strong>p_img</strong> = &lt;boxsim.particle object&gt;<br>
+<strong>p_origin</strong> = &lt;boxsim.particle object&gt;<br>
+<strong>particle_test</strong> = &lt;boxsim.particle object&gt;<br>
+<strong>pos_max</strong> = 5<br>
+<strong>step</strong> = 0.1<br>
+<strong>vel_max</strong> = 500</td></tr></table>
+</body></html>

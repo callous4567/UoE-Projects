@@ -1,0 +1,22 @@
+import time
+import sys
+import random
+
+def looper(text):
+    for d in range(0,50):
+        textDefined = str(text)
+        timeDelay(text) 
+
+ourText = "QUEEN Can anybody find me? SOMEBODY TO LOVE!!!!!"
+
+
+def timeDelay(t):
+    print()
+    for c in t:
+        sys.stdout.write(c)
+        sys.stdout.flush()
+        numbertime = random.uniform(0.001, 0.002)
+        time.sleep(numbertime)
+    print()
+
+looper(ourText)

@@ -1,0 +1,6 @@
+Welcome to the system parameters file. There are several parameters that may be modified (optionally) from default values. Defaults will be altered throughout the project to better suit the purpose.
+---------
+SIMPARAMS
+---------
+timestep optparam2 optparam3 optparam4 moreoptparameters
+

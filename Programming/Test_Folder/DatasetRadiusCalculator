@@ -1,0 +1,34 @@
+# This script will calculate the radius for multiple spheres of a volume V.
+# Should account for exponent of base unit, and allow custom base unit output.
+import numpy
+import sys
+import time
+import random
+
+def time_delay(text):
+    print()
+    for c in text:
+        sys.stdout.write(c)
+        sys.stdout.flush()
+        numbertime = random.uniform( 0.001, 0.05)
+        time.sleep(numbertime)
+    print()
+    
+def volume_significand_getter():
+    volume_list = []
+    n_o = int(input("How many spheres are we getting the volumes for? "))
+    for i in range( 0, n_o):
+        significand_i = float(input(("Significand {0:d}: ").format(i + int(1))))
+        volume_list.append(significand_i)
+    output = []
+    new_list = numpy.round_(volume_list, decimals = 2)
+    print(("Your final volume significand list is... {}").format(new_list))
+    
+# Numpy signifies a list, round it all, and returns the list. It doesn't auto-
+# correct the list you provide.
+# To install Numpy, sudo install apt-get python3.6-numpy, or something like it!
+
+# So we have a function to get the volume significands, next up is the exponent
+# and exponent conversion.
+
+time_delay("Hello my cat")

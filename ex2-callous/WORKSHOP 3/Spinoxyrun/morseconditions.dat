@@ -1,0 +1,38 @@
+This is the file for the Morse Potential start conditions.
+D_E R_E ALPHA is the order for the constants.
+X Y Z VX VY VZ MASS INDEX are the particle conditions.
+
+mass is in atomic units.
+D_e is in eV/electron volts
+r_e is in A/angstroms
+alpha is in A^-1/inverse angstroms
+
+
+}eþø}}þø↓}¶½↓ø½½\ø\ø\ŧħøþħ\}ø}ŋŧ\þø\ŋ←}½←€½} <-- Bet that confused you! >:)
+
+POINTSTART OXYGEN
+0.60376 0 0 0.1 0 0 16 OXYZERO
+-0.60376 0 0 -0.1 0 0 16 OXYONE
+5.21322 1.20752 2.65374
+
+
+
+POINTSTART NITROGEN
+0.60376 0 0 0.1 0 0 14.01 NITZERO
+-0.60376 0 0 -0.1 0 0 14.01 NITONE
+9.90523 1.09768 2.68867
+
+
+# ADDING A BIT OF A SPINNY KICK
+
+POINTSTART OXYGEN
+0.60376 0 0 0.1 0.3 0 16 OXYZERO
+-0.60376 0 0 -0.1 -0.3 0 16 OXYONE
+5.21322 1.20752 2.65374
+
+
+
+POINTSTART NITROGEN
+0.60376 0 0 0.1 0.3 0 14.01 NITZERO
+-0.60376 0 0 -0.1 -0.3 0 14.01 NITONE
+9.90523 1.09768 2.68867
