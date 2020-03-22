@@ -215,7 +215,7 @@ def read_txtfile_updated(filename, directory):
         print("IDENTIFIED")
     fig,ax1 = plt.subplots()
     ax1.errorbar(grapher[0], grapher[1], yerr=grapher[2], linewidth=0.2, label=(("{}").format(filename)))
-    ax1.axvspan((1.575 - 0.0125), (1.575 + 0.0125), facecolor='r', alpha=0.5)
+    ax1.axvspan((1.575 - 0.0125), (1.575 + 0.0125), facecolor='f, alpha=0.5)
     ax1.axvspan((1.625 - 0.0125), (1.625 + 0.0125), facecolor='g', alpha=0.5)
     fig.savefig(("{}.png").format(filename), dpi=600)
     plt.close(fig)
