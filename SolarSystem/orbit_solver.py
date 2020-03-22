@@ -50,8 +50,19 @@ class file_import_tool(object):
         timestep, stepsplit = 1, 10 # Days and steps. :/
         filelines = filelines[1:]
         for line in filelines:
-            x.append(line[0]), y.append(line[1]), z.append(line[2])
+            linesplit = line.split(",")
+            linesplit = [float(d) for d in linesplit]
+            x.append(linesplit[0]), y.append(linesplit[1]), z.append(linesplit[2])
         xyz = [x,y,z]
+
+        fig = plt.figure()
+        ax1 = fig.add_subplot(111, projection='3d')
+
+        graph = ax1.plot(x, y, z, 'o', lw=0.1, markersize=0.5)
+
+        print(len(x))
+
+        plt.show()
 
         file.close()
 
@@ -165,10 +176,17 @@ class ellipse_solver(object):
         for d in range(len(xyz)):
             vecseps.append(np.linalg.norm(xyz[d] - xyz[0]))
 
+
+        hey = np.arange(0, len(vecseps), 1)
+        print(hey)
+
+        plt.plot(hey, vecseps)
+        plt.show()
+
         # Set a bound on the minimum vector separation beneath which we have closure.
         # Python searches list horizontally left-right. First point which this is satisfied will provide the estimate.
         # You can set it manually or to a lower index if you're confident in your integrator period +/+ want more accuracy.
-        minsearch = vecseps[1]
+        minsearch = vecseps[2]
 
         # Set range of values to infinity to prevent overlap when estimating first closure
         for i in range(0,150):
@@ -193,6 +211,7 @@ class ellipse_solver(object):
 
         closure_num -= int(1)
         print(translation)
+        print(closure_num)
 
         self.xyzrow = np.array(xyz)
         self.transestimate = translation
@@ -204,17 +223,24 @@ class ellipse_solver(object):
 
         closed_xyz, closure_num, translation = self.xyzrow, self.closure_num, self.transestimate
 
-        print(translation)
         translated_xyz = [d - translation for d in closed_xyz]
 
         vector1, vector2 = translated_xyz[int(onemax * closure_num)] - translated_xyz[0], translated_xyz[int(twomax * closure_num)] - \
                            translated_xyz[int(twomin * closure_num)]
 
+        print(vector1)
+        print(vector2)
+
         gram2 = vector2 / np.linalg.norm(vector2)
-        v12_angle = np.arccos(np.dot(vector1, vector2) / (np.linalg.norm(vector1) * np.linalg.norm(vector2)))
+        # v12_angle = np.arccos(np.dot(vector1, vector2) / (np.linalg.norm(vector1) * np.linalg.norm(vector2)))
         mid1 = vector1 - (np.dot(vector1, gram2)*gram2)
         gram1 = mid1 / np.linalg.norm(mid1)
         gram3 = np.cross(gram1, gram2)
+
+
+        print(gram1)
+        print(gram2)
+        print(gram3)
         # 1x2 = 3. 1,2 are xy, 3 iz z.
 
         grammatrix = np.array((gram1, gram2, gram3))
@@ -296,8 +322,9 @@ class ellipse_solver(object):
         self.vecsep_calc()
         self.gram_flattener()
         self.twod_optimizer()
-        file = open(self.name + ".dat", 'w+')
+        file = open((self.name + ".txt"), 'w+')
         file.write("Omitting txt, body is " + self.name + " Orbital a,b " + str(self.ab) + " with period " + str(self.period) + " days.")
+        file.close()
 
 
 
@@ -311,5 +338,6 @@ class ellipse_solver(object):
 
 # Import file.
 filer = file_import_tool()
-file_use = filer.orbit_porter("example_text_file.txt") # returns xyz, [timestep, stepsplit]
+file_use = filer.orbit_porter("Earth.dat") # returns xyz, [timestep, stepsplit]
 orbit_object = ellipse_solver(file_use[0], file_use[1], file_use[2])
+orbit_object.main()

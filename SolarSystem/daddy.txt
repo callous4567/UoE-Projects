@@ -1,1 +1,0 @@
-Omitting txt, body is daddy.txt Orbital a,b [111.0016641686297, 332.9984682872939] with period 39952 days.

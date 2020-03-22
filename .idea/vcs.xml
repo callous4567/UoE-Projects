@@ -2,7 +2,5 @@
 <project version="4">
   <component name="VcsDirectoryMappings">
     <mapping directory="$PROJECT_DIR$" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/scikit-image" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/scikit-image/PyWavelets" vcs="Git" />
   </component>
 </project>
