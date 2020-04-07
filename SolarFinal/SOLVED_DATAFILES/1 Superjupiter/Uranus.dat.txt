@@ -1,0 +1,1 @@
+Omitting txt, body is Uranus.dat Orbital a,b [19.18840455374074, 19.167882883192206] with period 30681.600000000002 days.

@@ -1,0 +1,1 @@
+Omitting txt, body is Halley.dat Orbital a,b [4.537810613679795, 17.762848861753227] with period 27702.100000000002 days.

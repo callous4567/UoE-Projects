@@ -1,0 +1,3 @@
+Omitting txt and dat... body is Uranus.dat
+Orbital period is 31105.0 days. 
+Semimajor, semiminor, eccentricty, apoapsis, and periapsis are respectively [19.488105258465257, 19.447444775091377] 0.06456390786616122 20.746333490858863 18.229877026071655

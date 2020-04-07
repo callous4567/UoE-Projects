@@ -1,0 +1,3 @@
+Omitting txt and dat... body is Mercury.dat
+Orbital period is 88.0 days. 
+Semimajor, semiminor, eccentricty, apoapsis, and periapsis are respectively [0.38791110360725806, 0.37589929939956085] 0.24692479153208632 0.48369597199846176 0.2921262352160543

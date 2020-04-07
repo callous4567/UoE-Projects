@@ -1,0 +1,3 @@
+Omitting txt and dat... body is Jupiter.dat
+Orbital period is 4184.0 days. 
+Semimajor, semiminor, eccentricty, apoapsis, and periapsis are respectively [5.018267408108181, 5.009666568083993] 0.05852243232087049 5.311948622867222 4.72458619334914

@@ -1,0 +1,3 @@
+Omitting txt and dat... body is Saturn.dat
+Orbital period is 9479.0 days. 
+Semimajor, semiminor, eccentricty, apoapsis, and periapsis are respectively [8.886719689950974, 8.71544196546708] 0.1953853347135942 10.623054391077932 7.1503849888240145

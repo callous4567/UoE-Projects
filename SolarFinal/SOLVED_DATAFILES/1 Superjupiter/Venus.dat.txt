@@ -1,0 +1,1 @@
+Omitting txt, body is Venus.dat Orbital a,b [0.7227679992743001, 0.7233986619818226] with period 224.70000000000002 days.

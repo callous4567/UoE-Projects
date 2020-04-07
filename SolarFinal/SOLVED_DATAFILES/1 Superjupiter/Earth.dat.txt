@@ -1,0 +1,1 @@
+Omitting txt, body is Earth.dat Orbital a,b [0.9998189165774775, 0.9989806704280605] with period 365.1 days.

@@ -1,0 +1,1 @@
+Omitting txt, body is Neptune.dat Orbital a,b [30.062371204624814, 30.063436031847026] with period 60170.5 days.

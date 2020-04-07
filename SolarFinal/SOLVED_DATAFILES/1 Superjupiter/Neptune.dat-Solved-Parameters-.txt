@@ -1,0 +1,3 @@
+Omitting txt and dat... body is Neptune.dat
+Orbital period is 55211.0 days. 
+Semimajor, semiminor, eccentricty, apoapsis, and periapsis are respectively [28.563286469958463, 28.50347989243956] 0.06467820100943726 30.410708453752576 26.71586448616435

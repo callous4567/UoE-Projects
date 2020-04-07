@@ -1,0 +1,1 @@
+Omitting txt, body is Jupiter.dat Orbital a,b [5.199071109867633, 5.192736834249399] with period 4333.6 days.

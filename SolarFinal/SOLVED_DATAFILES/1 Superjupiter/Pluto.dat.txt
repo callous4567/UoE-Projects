@@ -1,0 +1,1 @@
+Omitting txt, body is Pluto.dat Orbital a,b [39.86049323539622, 38.5596349466092] with period 91854.5 days.

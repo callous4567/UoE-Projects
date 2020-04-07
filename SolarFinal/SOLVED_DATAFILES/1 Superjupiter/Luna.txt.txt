@@ -1,0 +1,1 @@
+Omitting txt, body is Luna.txt Orbital a,b [0.0025544260295179066, 0.002593227271437733] with period 27.5 days.

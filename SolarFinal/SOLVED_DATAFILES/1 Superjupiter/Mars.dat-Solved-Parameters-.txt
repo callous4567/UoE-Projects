@@ -1,0 +1,3 @@
+Omitting txt and dat... body is Mars.dat
+Orbital period is 690.0 days. 
+Semimajor, semiminor, eccentricty, apoapsis, and periapsis are respectively [1.548173827113612, 1.5086114309788283] 0.22462290394950307 1.8959291279784876 1.2004185262487366

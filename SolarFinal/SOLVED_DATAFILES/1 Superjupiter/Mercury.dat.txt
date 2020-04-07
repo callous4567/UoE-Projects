@@ -1,0 +1,1 @@
+Omitting txt, body is Mercury.dat Orbital a,b [0.37862545766141836, 0.38707947712932533] with period 88.0 days.

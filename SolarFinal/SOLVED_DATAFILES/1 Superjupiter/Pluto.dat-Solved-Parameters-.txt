@@ -1,0 +1,3 @@
+Omitting txt and dat... body is Pluto.dat
+Orbital period is 75190.0 days. 
+Semimajor, semiminor, eccentricty, apoapsis, and periapsis are respectively [35.091157420681554, 34.29591744543292] 0.21168529897395547 42.51943957062067 27.662875270742443
