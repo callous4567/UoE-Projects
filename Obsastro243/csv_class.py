@@ -114,7 +114,7 @@ class csv_handler(object):
         plt.show()
         fig.savefig(savefigtension, dpi=1200)
     # Grapher except this one will put peaks on using scipy.peaks
-    def peakgrapher(self, is_transmission, xlims, ylims, title, label, colour, linewidth, data, savefigtension, locatrix, scalefactor, savfactor):
+    def peakgrapher(self, is_transmission, xlims, ylims, title, label, colour, linewidth, data, savefigtension, locatrix, scalefactor, savfactor,wider, separation):
 
         xlabel = '$\lambda$ / nm'
         if is_transmission == "true":   # Customises for transmission curve, I imagine that's desired.
@@ -125,19 +125,38 @@ class csv_handler(object):
         fig = plt.figure()
         ax = fig.add_subplot(111)
 
-        x,y = data[0]*0.1, data[1]
-        y_flattened = savgol_filter(y, window_length=savfactor, polyorder=0, deriv=0, delta=0, mode='nearest') # Savgol flatten for noise/etc
+        # Factor of 0.1 * data[0] for plotting tube data.
+        # No factor of 0.1 for solar spectrum data.
+        x,y = data[0], data[1]
+        if savfactor == "false":
+            y_flattened = y
+        else:
+            y_flattened = savgol_filter(y, window_length=savfactor, polyorder=0, deriv=0, delta=0, mode='nearest') # Savgol flatten for noise/etc
 
 
         # SCIPYFINDPEAKSPARAMETERS
-        peakdata = find_peaks(y_flattened, height=None, distance=20, prominence=max(y_flattened)/scalefactor)
-        peakxvalues = [x[d] for d in peakdata[0]]
+
+        # For negative peaks.
+        if peakscale < 0:
+            y_flattened = -y_flattened
+            peakdata = find_peaks(y_flattened, height=None, distance=separation,prominence=min(y_flattened) / scalefactor, width=wider)
+            peakxvalues = [x[d] for d in peakdata[0]]
+            y_flattened = -y_flattened
+        else:
+            peakdata = find_peaks(y_flattened, height=None, distance=separation,prominence=max(y_flattened) / scalefactor, width=wider)
+            peakxvalues = [x[d] for d in peakdata[0]]
 
 
         ax.set(xlim=xlims, ylim=ylims, title=title, xlabel=xlabel, ylabel=ylabel)
 
-        textdata = [plt.text(x[i], y_flattened[i], x[i], ha='center', va='center') for i in peakdata[0]]
-        adjust_text(textdata, arrowprops=dict(arrowstyle='->', color='green'))
+        #""" SPECIFIC FOR H-K CALCIUM LINES"""
+        #textdata = [plt.text(x[i], y_flattened[i], str("{0:.2f}").format(x[i]), ha='center', va='center', alpha=0.5) for i in peakdata[0]]
+        #textdata = textdata[1:3]
+        #adjust_text(textdata, arrowprops=dict(arrowstyle='->', color='green', alpha=0.8, lw=0.5))
+
+        # In general, use this
+        textdata = [plt.text(x[i], y_flattened[i], str("{0:.2f}").format(x[i]), ha='center', va='center', alpha=0.5) for i in peakdata[0]]
+        adjust_text(textdata, arrowprops=dict(arrowstyle='->', color='green', alpha=0.8, lw=0.5))
 
         ax.plot(x, y_flattened, label=label, lw=linewidth, color=colour)
         #ax.plot(x, y, label=label, lw=linewidth, color='blue')
@@ -163,7 +182,38 @@ class csv_handler(object):
         ax.grid(True, which='major', color="blue", alpha=1, linestyle='dotted', lw=0.5)  # Enable grids on subplot
         ax.grid(True, which='minor', color="pink", alpha=1, linestyle='dotted', lw=0.5)
 
-        plt.plot()
+        """
+        # NITROGEN AND HELIUM
+        nitrodata = [[395.585, 0.1], [399.5, 0.25], [404.131, 0.15], [424.178, 0.1], [444.703, 0.15], [460.148, 0.15],
+                     [460.716, 0.1], [462.139, 0.1], [463.054, 0.2], [464.308, 0.15], [480.329, 0.1], [496.398, 0.4],
+                     [499.436, 0.1], [500.148, 0.15], [500.515, 0.2], [500.732, 0.15], [501.062, 0.1], [504.51, 0.15],
+                     [566.663, 0.15], [567.602, 0.15], [567.956, 0.2], [568.621, 0.1], [571.077, 0.1], [575.25, 0.75],
+                     [593.178, 0.15], [594.165, 0.15], [648.205, 0.2], [648.27, 0.45], [661.056, 0.2], [742.364, 0.75],
+                     [744.229, 1], [746.831, 1], [818.487, 0.45], [818.802, 0.45], [821.634, 0.7], [822.314, 0.45],
+                     [824.239, 0.45], [843.874, 0.15], [856.774, 0.6], [859.4, 0.7], [862.924, 0.75], [865.589, 0.6],
+                     [868.028, 0.75], [868.34, 0.75], [868.615, 0.6], [870.325, 0.6], [871.17, 0.7], [871.883, 0.6],
+                     [938.68, 0.6], [939.279, 0.7], [1011.248, 0.4], [1011.464, 0.45], [1218.682, 0.45], [1246.962, 1],
+                     [1342.961, 0.6], [1358.133, 1]]
+        nitrodata = np.array(nitrodata)
+        nitrolist = nitrodata.T  # [0] is x and [1] is y
+        interpx = np.arange(400, 1000, 0.1)
+        interpy = np.interp(interpx, nitrolist[0], nitrolist[1])
+        ax.plot(interpx, interpy, color="blue", lw=0.4, alpha=1)
+
+
+
+
+        heliumdata = np.genfromtxt("HELIUMCSV.csv", delimiter=',')
+        ellium = heliumdata.T
+        ax.plot(ellium[1], ellium[0], color="green", lw=0.4, alpha=1)
+
+        legend_elements = [Patch(facecolor="red", edgecolor='black', label="Raw Tube Spectrum"),
+                           Patch(facecolor="blue", edgecolor='black', label="NIST Nitrogen Spectrum"),
+                           Patch(facecolor="green", edgecolor='black', label="NIST Helium Spectrum")]
+
+        ax.legend(handles=legend_elements, loc='upper right', title="Legend")
+        """
+
         plt.show()
         fig.savefig(savefigtension, dpi=1200)
 
@@ -199,8 +249,6 @@ class csv_handler(object):
         lambdasmax = [wldata[argsmax[0]], wldata[argsmax[1]]]
 
         return (resivalues - yvaldata)**2 + (1 - max(resivalues)/max(yvaldata))**2
-
-
     # LSQ solve (lmfit)
     def least_solver(self, xydata, label):
         x, y = [float(d) for d in xydata[0]], [float(d) for d in xydata[1]]
@@ -211,11 +259,11 @@ class csv_handler(object):
         # Arrayify
 
         # Smooth and get an estimate for the blackbody temperature using Weins law.
-        yn = savgol_filter(y, window_length=101, polyorder=0, deriv=0, delta=0, mode='nearest')
-        yn = savgol_filter(yn, window_length=101, polyorder=0, deriv=0, delta=0, mode='nearest')
-        yn = savgol_filter(yn, window_length=101, polyorder=0, deriv=0, delta=0, mode='nearest')
-        yn = savgol_filter(yn, window_length=101, polyorder=0, deriv=0, delta=0, mode='nearest')
-        y = yn
+        #yn = savgol_filter(y, window_length=101, polyorder=0, deriv=0, delta=0, mode='nearest')
+        #yn = savgol_filter(yn, window_length=101, polyorder=0, deriv=0, delta=0, mode='nearest')
+        #yn = savgol_filter(yn, window_length=101, polyorder=0, deriv=0, delta=0, mode='nearest')
+        #yn = savgol_filter(yn, window_length=101, polyorder=0, deriv=0, delta=0, mode='nearest')
+        #y = yn
 
         # Wein temp estimate based on peak wavelength.
         lambda_wein = x[np.argmax(y)]
@@ -233,7 +281,7 @@ class csv_handler(object):
 
         x, y = np.array(x), np.array(y)
 
-        plt.plot(x,y, lw=0.1)
+        plt.plot(x,y, lw=0.05)
         plt.savefig("savefast.png", dpi=1200)
 
         params = Parameters()
@@ -265,8 +313,8 @@ class csv_handler(object):
         print(x)
 
         ax.set(title=(label + " Savgol Filtered vs. Planck Fitted Spectra"), xlabel="$\lambda$ / nm", ylabel="Intensity D, Unknown Units")
-        ax.plot(x, y, label="Raw Data", lw=0.5, color='red')
-        ax.plot(x, yn, label="Planck Fitted", lw=0.5, color='green')
+        ax.plot(x, y, label="Raw Data", lw=0.1, color='red')
+        ax.plot(x, yn, label="Planck Fitted", lw=0.1, color='green')
 
         if label != "false":
             legend_elements = [Patch(facecolor='red', edgecolor='black', label="Raw Data"),
@@ -299,12 +347,10 @@ class csv_handler(object):
         plt.plot()
         plt.show()
         fig.savefig(label + ".png", dpi=1200)
-
     # Generic planck function (not minimiser) w/ params having T and Norm
     def planck(self, wavelength, *params):
         h, c, k = constants.h, constants.c, constants.Boltzmann
         return ((2*h*(c**2))/(params[1]*(wavelength**5)))/(np.exp(h*c/(wavelength*k*params[0]))-1)
-
     # Solves using scipy curve_fit.
     def scipy_solver(self, xydata):
         x, y = [float(d) for d in xydata[0]], [float(d) for d in xydata[1]]
@@ -338,25 +384,101 @@ csv_handle = csv_handler("dummy")
 # Perform operation to get data. EXAMPLE USES OF THE PROGRAM ARE DISPLAYED BELOW! Just copy-paste it and input the CSV files that you want to use.
 
 # REGULAR SINGLE PLOT, NO LABEL. FILL PARAMETERS!
-FILETOHANDLE1 = "unfiltered bulb.csv"
+FILETOHANDLE1 = "initial_sky_spectrum.csv"
 RAWDATA = csv_handle.csv_reader(FILETOHANDLE1)
 RANGE = [279,1000]
-TITLE = "Unfiltered Bulb Spectrum"
+TITLE = "Initial Sky Spectrum, Savgol Filtered"
 istransmission = "false"
 majorxmajoryminorxminorylocatormatrix = [100, 0.2, 5, 0.1]
 label = "false"
-peakscale = 32
-savgolwindow = 7
+peakscale = -60
+savgolwindow = 3
+wide = 0
+sepofpoints = 10
+YRANGE = [0,1]
+linewidth = 0.3
+# CLIP DATA AS YOU WANT
+#ex, why = RAWDATA[0][0], RAWDATA[0][1]
+#up,low = 200,1400
+#ex, why = ex[up:low], why[up:low]
+#RAWDATA = [[ex,why], RAWDATA[1]]
 
-#csv_handle.grapher(istransmission, RANGE, [0,1], TITLE, label, "r", 0.5, RAWDATA[0], FILETOHANDLE1 + ".png", majorxmajoryminorxminorylocatormatrix)
-csv_handle.peakgrapher(istransmission, RANGE, [0,1], TITLE, label, "r", 0.5, RAWDATA[0], FILETOHANDLE1 + "peak.png", majorxmajoryminorxminorylocatormatrix, peakscale, savgolwindow)
+
+#REGULAR PEAKS ETC
+#csv_handle.grapher(istransmission, RANGE, YRANGE, TITLE, label, "r", linewidth, RAWDATA[0], FILETOHANDLE1 + ".png", majorxmajoryminorxminorylocatormatrix)
+#csv_handle.peakgrapher(istransmission, RANGE, YRANGE, TITLE, label, "r", linewidth, RAWDATA[0], FILETOHANDLE1 + "peak.png", majorxmajoryminorxminorylocatormatrix, peakscale, savgolwindow, wide, sepofpoints)
+
+
+# CUSTOM MULTIPLOT
+Filestouse = ["ND1.csv", "ND2.csv", "ND3.csv"]
+datafiles = []
+for d in Filestouse:
+    datafiles.append(csv_handle.csv_reader(d))
+xy = [d[0] for d in datafiles]
+locatrix = majorxmajoryminorxminorylocatormatrix
+title="Spectra for Neutral Density Focused Exposures"
+xlabel="$\lambda$ / nm"
+ylabel="Intensity D, Unknown Units"
+
+fig = plt.figure(figsize=(8.27,11.69))
+ax = fig.add_subplot(111)
+for d in xy:
+    print(d)
+
+ax.set(xlim=RANGE, ylim=YRANGE, title=title, xlabel=xlabel, ylabel=ylabel)
+ax.plot(xy[0][0], xy[0][1], label="ND1", lw=linewidth, color="red")
+ax.plot(xy[1][0], xy[1][1], label="ND2", lw=linewidth, color="orange")
+ax.plot(xy[2][0], xy[2][1], label="ND3", lw=linewidth, color="brown")
+#                                            ax.plot(xy[3][0], xy[3][1], label="Zenith", lw=linewidth, color="cyan")
+
+legend_elements = [Patch(facecolor="red", edgecolor='black', label="ND1"),
+                   Patch(facecolor="orange", edgecolor='black', label="ND2"),
+                   Patch(facecolor="brown", edgecolor='black', label="ND3")]
+
+"""
+ax.plot(xy[0][0], xy[0][1], label="Initial Sky Exposure", lw=linewidth, color="red")
+ax.plot(xy[1][0], xy[1][1], label="Horizon", lw=linewidth, color="magenta")
+ax.plot(xy[2][0], xy[2][1], label="Elevation 45 Degrees", lw=linewidth, color="green")
+ax.plot(xy[3][0], xy[3][1], label="Zenith", lw=linewidth, color="cyan")
+
+legend_elements = [Patch(facecolor="red", edgecolor='black', label="Initial Sky Exposure"),
+                   Patch(facecolor="magenta", edgecolor='black', label="Horizon"),
+                   Patch(facecolor="green", edgecolor='black', label="Elevation 45 Degrees"),
+                   Patch(facecolor="cyan", edgecolor='black', label="Zenith")]
+
+"""
+
+
+ax.legend(handles=legend_elements, loc='upper right', title="Legend")
+
+
+mpl.rc('font', size=8)  # Redefine matplotlib rcParams to change font size
+
+major_ticks_x, major_ticks_y, minor_ticks_x, minor_ticks_y = locatrix[0], locatrix[1], locatrix[2], locatrix[3] # Set your majors and minors. It might be worth modifying this if you intend to clip graphs along the y axis.
+
+major_ticks_x = pltick.MultipleLocator(major_ticks_x)  # Decide/calculate locators for the major and minor ticks on subplot
+major_ticks_y = pltick.MultipleLocator(major_ticks_y)
+minor_ticks_x = pltick.MultipleLocator(minor_ticks_x)
+minor_ticks_y = pltick.MultipleLocator(minor_ticks_y)
+
+ax.xaxis.set_major_locator(major_ticks_x)  # Apply locators to ax subplot
+ax.yaxis.set_major_locator(major_ticks_y)
+ax.xaxis.set_minor_locator(minor_ticks_x)
+ax.yaxis.set_minor_locator(minor_ticks_y)
+
+ax.grid(True, which='major', color="blue", alpha=1, linestyle='dotted', lw=0.5)  # Enable grids on subplot
+ax.grid(True, which='minor', color="pink", alpha=1, linestyle='dotted', lw=0.5)
+
+plt.show()
+fig.savefig("multiplot2.png", dpi=1200)
+
 
 # TRANSMISSION CURVE PLOT WITH A LABEL
-#TRANSIRANGE = [200, 1000]
+#TRANSIRANGE = [279, 1000]
 #locatrix = [100, 0.2, 5, 0.1]
-FILEUNFILT, FILETRANS = "unfiltered bulb.csv", "filter5fw1.csv"
-tcurve_combo14 = csv_handle.transmission_curve(FILEUNFILT, FILETRANS)
-csv_handle.grapher("true", TRANSIRANGE, [0,1], "Filter 5 Transmission Curve", "false", "b", 0.2, tcurve_combo14[0], "tcurve5.png", locatrix)
+#FILEUNFILT, FILETRANS = "unfiltered bulb.csv", "filter5fw1.csv"
+#tcurve_combo14 = csv_handle.transmission_curve(FILEUNFILT, FILETRANS)
+#csv_handle.grapher("true", TRANSIRANGE, [0,1], "Filter 5 Transmission Curve", "false", "b", 0.2, tcurve_combo14[0], "tcurve5.png", locatrix)
 
 # MULTIPLIED CURVE PLOT WITH A LABEL! In this case, I've first multiplied FW 1 on the default spectrum, then FW4, giving what should be 1,4 in the process! We'll see.
 # Anyway it isn't. Whatever. The multiplication method is sound and it works, you get what you pay for.
@@ -368,6 +490,6 @@ csv_handle.grapher("true", TRANSIRANGE, [0,1], "Filter 5 Transmission Curve", "f
 #csv_handle.grapher("true", [0,1000], [0,1], "Transmission Curve (predicted) of filter wheel combination '1,4'", "FW Pred Combo '1,4'", "b", 0.2, tcurvepred14[0], "tcurvepred14.png", locatrix)
 
 # Planck Fit
-#skyspectrum = csv_handle.csv_reader("unfiltered bulb.csv")
-#hello = csv_handle.least_solver(skyspectrum[0], "Unfiltered Bulb")
+#skyspectrum = csv_handle.csv_reader("ND3.csv")
+#hello = csv_handle.least_solver(skyspectrum[0], "ND 3 Filter, Focused Sun")
 #hello = csv_handle.scipy_solver(skyspectrum[0])
