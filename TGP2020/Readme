@@ -1,1 +1,42 @@
-This is an empty readme. 
+This is an empty readme. README.txt has some better information about how the code works, though it hasn't been updated in a while.
+
+astrowrapper.py holds all base routines/utilities/etc
+main_runtime.py applies astrowrapper.py to the file tree/etc that I have generated.
+
+At some point I gave up generalising the code, and ended up integrating the file tree into astrowrapper.py. I will amend this in the coming summer, sorry-not-sorry.
+
+This code relates to the Telescope Group Project undertaken at Edinburgh University in the 4th Year, specifically to the Star Clusters project.
+Included are:
+
+- FITS image reduction (dark, bias, flat, statistics on these, etc)
+- FITS image stacking (reliant on Astrometry.net API for distant/field rotation, parallelised)
+- Classes for downloading/handling Astropy Tables from GAIA DR2 
+- Classes for crossmatching against GAIA DR2 (INCOMPLETE, will be added in Summer 2021 for solo rehash)
+- Classes for handling HDF5 files 
+- Various convenience utilities including conversion of degrees to right ascension (RA) and declination (DEC) amongst others.
+- Utilities for fitting 1D & 2D gaussians against 2D arrays alongside simulating 1D/2D point sources 
+- PSF Photometry Routines (INCOMPLETE/DEPRECATED, will be added in Summer 2021 for solo rehash)
+- Aperture photometry routines with variable FWHM/etc & improved local centroid estimation for a set of RA:DEC coordinates, simple-mean/sigma-clipped background estimation, etc.
+- Tools for interpreting CMD/PARSEC3.2 data, including generation of Isochrone catalogues & rough EEP tracks (up to RGB) 
+- Tools for least-squares-fitting isochrones to data using CMD/PARSEC, MIST UBVR(I) or MIST (logTlogL) Isochrones 
+- Visualization tools for HR diagrams (Bicolour/Tricolour) alongside reddenning corrections and other such utilities 
+- Kernel Density Estimators for estimating cluster centroids both in RA:DEC and PMRA:PMDEC space (both from obtained data & GAIA tables) 
+- Cluster membership utilities for datasets
+
+and a few other miscellanies. In general it's full of anything you might need. If you set up as is shown in the readme.txt (will be updated)
+then all the code should hypothetically run perfectly. Indeed, my groupmates were able to do this, so you should be able to do it too. 
+
+Again, readme.txt hasn't been updated since photometry/etc was added. But until image stacking you should be golden. Will update in summer.
+
+IMPORTANT!
+- This code is incomplete
+- There are omissions and some dependences, i.e. read_mist_models.py 
+(The MIST folks produced it, it isn't here and hence isn't attributed. Go and find it + attribute if you want to use it.)
+
+The code is here simply for inspiration and/or as an example of my efforts. That's all. Virtually all of it (except some obvious dependences, again read_mist_models/etc) is mine.
+
+If you're a student doing the same project in the future, I hope the code is inspirational to you. 
+The code took weeks to properly produce (duh, bad at coding...) through relentless trial and error, so hopefully you can use it too.  
+Wouldn't mind if you gave me a cheeky bit of credit either, heh, anyway, enjoy! (also sorry about the profanity in the code.) 
+
+
