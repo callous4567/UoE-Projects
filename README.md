@@ -3,6 +3,7 @@
 Holds all/most of the coding I've done so far at the UoE for my 5-year integrated MSc in Physics w/ Astrophysyics.
 
 This includes code for the:
+
 2nd Year Programming & Data Analysis (Basic/random/etc stuff. First time coding too!! (The nostalgia my god) 
 3rd Year Observational Astronomy Labs (Spectroscopy of discharge tubes + also the solo work from 1st Semester/etc)
 3rd Year Computer Modelling (Solo + Group, note that the N-Body simulation code is the work of one of my group-mates + has been removed. Sorry :/) 
