@@ -77,10 +77,10 @@ from skimage import transform
 from scipy.ndimage.interpolation import shift
 # Set AstrometryNet() API key.
 ast = AstrometryNet()
-ast.api_key = 'rkwvuedpwhdrllyp'
+ast.api_key = 
 # Set GAIA login
-gaia_username = "sstrasza"
-gaia_password = "CENT@rino4657898"
+gaia_username = 
+gaia_password = 
 # Set the root directory in WINDOWS format. This file is made for usage on PyCharm on a Windows OS.
 rootdir = 'D:\Prog\pycharm\TGP2020'
 texdir = rootdir + "\\" + "CustomFiguresPGF"
