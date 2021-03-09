@@ -54,9 +54,11 @@ import os
 import glob
 import time
 import scipy
+import scipy.constants
 import itertools
 import multiprocessing
 from matplotlib.patches import Patch
+from mpmath import mpf
 
 from scipy.signal import savgol_filter
 from scipy.interpolate import interp1d
@@ -65,7 +67,11 @@ from skimage import transform
 from scipy.ndimage.interpolation import shift
 
 from SHP2021.Code import astrowrapper
+font = {'family' : 'serif',
+        'weight' : 'normal',
+        'size'   : 12}
 
+mpl.rc('font', **font)
 # Set up data file in case it's needed.
 filer = astrowrapper.hdf5_writer(astrowrapper.rootdir, "shp.hdf5")
 #filer.create()
@@ -73,6 +79,11 @@ filer = astrowrapper.hdf5_writer(astrowrapper.rootdir, "shp.hdf5")
 # ALL THE PARAMETERS THAT ONE MIGHT NEED! Give in the form of "density parameters" since all surveys quote like that.
 # Current values are random picked from book. If you give as raw densities, then alter the code to to account for this.
 # 0.31, 9E-5, 0.69
+# Grab scalar field stuff
+
+
+# We're moving all definition/etc down below deck.
+"""
 dens_mat = 0.3
 dens_rad = 0
 dens_vac = 0.7
@@ -83,30 +94,32 @@ current_age = 13.7e9 # Years
 year = 365*86400
 mpc = 3.0857*1e22
 G = 6.6743e-11
-w_inteconst = 4*np.pi*G * (year**2) / 3 # 4 * pi * G / 3 (in the form of year^-2) for integration routines.
+w_inteconst = 4*np.pi*G * (year**2) / 3 # 4 * pi * G / 3 (in the form of year^-2) for integration routines."""
 
 # Universe class. Follows LCDM model. Initialize with start parameters. Has functions for stepping forward/backward (in years).
-# Rho should be in units of kgm^-3 and H0 in kms^-1Mpc^-1
+# Rho should be in units of kgm^-3 and H0 in kms^-1Mpc^-1.
+# Default R is 1
+# X is currently in GIGAYEARS. Operational hubble in gigayear*s^-1
 class Universe():
     def __init__(self, dV,dR ,dM, H0, age):
         self.Ov, self.Or, self.Om = dV, dR, dM
         self.H = H0
-        self.H0 = False
-        self.addconst = False
+        self.H0 = H0
+        self.addconst = 0 # Use const_calc to change if uni is curved
         self.R = 1
-        self.age = age
-    # Converts between the forms of h0 (year vs natural units)
+        self.age = age # Gy
+    # Converts between the forms of h0 (year vs integrator units): does not alter self.value (needs to be done manually.)
     def converter(self, to_operator):
         if to_operator == True: # convert inputs into the operational format for integrator/etc
-            h0 = self.H * year * 1e3 / mpc # In units of (year * s^-1) for the purpose of timesteps by 1 year.
+            h0 = self.H * (1e9) * year * 1e3 / mpc # In units of (gigayearyear * s^-1) for the purpose of timesteps by 1 year.
             return h0
         if to_operator == False: # take operational format of h0 and return to "visual" format
-            h0 = self.H * mpc / (year * 1e3)
+            h0 = self.H * mpc / (1e9 * year * 1e3)
             return h0
-    # Calculate the addition constant (do at start)
+    # Calculate the addition constant (do at start) (only useful for curved universes)
     def const_calc(self):
         self.addconst = 1 - (self.Ov + self.Or + self.Om)
-    # Step the system forward by X years.
+    # Step the system forward by X GIGA_years.
     def forstep(self, X):
         # Step R
         #print(self.R)
@@ -116,32 +129,32 @@ class Universe():
         self.H = np.sqrt(Hsquared)
         # Alter age GOOD
         self.age += X
-    # Step the system forward by X years.
+    # Step the system forward by X GIGA_years.
     def backstep(self, X):
         # Step R
         self.R = self.R - X*(((self.R**2) * (self.H**2))**0.5)
         # Recalculate H
         Hsquared = (self.H0**2)*((self.Or/(self.R**4) + self.Om/(self.R**3) + self.Ov) + (self.addconst/(self.R**2)))
         self.H = np.sqrt(Hsquared)
-
         # Alter age GOOD
         self.age -= X
-    # Dump age/R
+    # Dump age/R/H
     def dump(self):
         return [self.age, self.R, self.H]
 
 # Universe class for the w-model. MATTER - VACUUM - RADATION = order.
+# TODO: verify that changes to Gy instead of Yr actually work
 class Universe_w():
     def __init__(self,w, rho, R0, RPrime0, h0, T0, X):
-        self.w = w
-        self.rho = rho
-        self.R = R0
-        self.Rprime = RPrime0
-        self.h = h0 # In the form of the integrator.
-        self.t = T0
-        self.step = X
+        self.w = w # EOS matrix!
+        self.rho = rho # Density matrix (not density parameter matrix!!!)
+        self.R = R0 # Initial scale factor
+        self.Rprime = RPrime0 # R' / (dR/dt) in Gy*s^-1
+        self.h = h0 # In the form of the integrator (pre-defined. see notes.)
+        self.t = T0 # initial age in Gy
+        self.step = X # timestep in Gy
 
-    # Calculate R'' given parameters.
+    # Calculate R'' given parameters for current self.setup.
     def accel_calc(self, rho, w):
         summation = 0
         for num, par in enumerate(w):
@@ -167,11 +180,32 @@ class Universe_w():
     def dump(self):
         return [self.R, self.Rprime, self.t]
 
+# Throwaway generate the standard lambda-CDM model given parameters.
+# TODO: densities over time, graphing, etcetera.
+class lambda_cdm():
+    def __init__(self, densities, hubble):
+        self.densarray = densities
+        self.hub = hubble # In the standard kms^-1kmpc^-1 format
+
+    # Will return R(t) for given t, provided in gigayears
+    def lambda_timecalc(self, t_list, t_shift):
+        # Shift analytic model by amount t_shift
+        #t_shift = 0.174
+        t_list = [d + t_shift for d in t_list]
+
+        # Do all standard shit
+        lamfrac = (self.densarray[1] / self.densarray[0]) ** (1 / 3)
+        hnought = self.hub * 1e3 / mpc
+        u = ((1*10**9)*365 * 86400)
+        t_list = [d*u for d in t_list]
+        lamt = (2 / (3 * hnought)) / (self.densarray[1] ** 0.5)
+        r_vals = [lamfrac * ((np.sinh(t / lamt)) ** (2 / 3)) for t in t_list]
+        return r_vals
 
 
 # main class that holds all stuff like integrators/etc.
 # Group is save group identity. Step in years for integrators.
-# This is for the finite step model that Andy said to use
+# This is for the finite step model that Andy said to use.
 class primary():
     def __init__(self, group, set, step, age_min, age_max):
         self.group, self.set = group, set
@@ -210,20 +244,19 @@ class primary():
         table['t'], table['R'], table['H'] = np.array(Backdump).T
         filer.write_table(self.group, self.set, table)
 
-
-    # Lambda CDM
-    def lambda_Cdm(self, t_list, density, oriH):
-        lamfrac = (density[1] / density[0]) ** (1 / 3)
-        hnought = oriH * 1e3 / mpc
-        t_list = t_list * (365 * 86400)
-        lamt = (2 / (3 * hnought)) / (density[1] ** 0.5)
-        r_vals = [lamfrac * ((np.sinh(t / lamt)) ** (2 / 3)) for t in t_list]
-        return r_vals
-
     # Visualize/Graph
-    def R_grapher(self):
+    def R_grapher(self, tlims, rlims, t_shift):
         # Get data
         data = filer.read_table(self.group, self.set)
+
+        # Also generate analytic solution for this situation.
+        lam_class = lambda_cdm(den_array, hub)
+        analytic_y = lam_class.lambda_timecalc(data['t'], t_shift)
+        # Generate rescale factor necessary for analytic_y
+        scale_nought = lam_class.lambda_timecalc([current_age], t_shift)[0]
+        analytic_y = np.array(analytic_y) / scale_nought  # assumes R0 = 1
+        data['R_ana'] = analytic_y
+
         x, y = data['t'], data['R']
         x, y = np.array(x), np.array(y)
 
@@ -241,26 +274,17 @@ class primary():
             if np.isnan(i) == True:
                 y[num] = 0
 
-        # Generate log plots w.r.t normalized t (against hubble t = 1/h0)
-        x_norm = year*x*hub*1000/(mpc)
-        logxnorm = np.log(x_norm)
-        logy = np.log(y)
-
-        # Generate analytic lambda CDM solution
-        analytic_y = self.lambda_Cdm(x, den_array, hub)
-
-        # Rescale by about 1.74
-        analytic_y = [d/1.74 for d in analytic_y]
 
         fig, axes = plt.subplots(2, figsize=(10, 10), dpi=72)
-        fig.suptitle("Evolution of R(t)")
+        fig.suptitle(("Evolution of R(t) for (t + shift) of {0:.3f}").format(t_shift))
         axes[0].plot(x,y, lw=1, color="black")
         axes[0].plot(x, analytic_y, lw=1, color="red")
-        axes[0].set(xlabel="t / Yr",
-                    ylabel="R(t)")
-
+        axes[0].set(xlabel="t / Gy",
+                    ylabel="R(t)",
+                    xlim=tlims,
+                    ylim=rlims)
         legend_elements = [Patch(facecolor='black', edgecolor='black', label="Model"),
-                           Patch(facecolor='red', edgecolor='black', label="Analytic")]  # ,
+                           Patch(facecolor='red', edgecolor='black', label="Analytic")]
         # Patch(facecolor='green', edgecolor='black', label="Av Fit")]
         axes[0].legend(handles=legend_elements, loc='upper right')
 
@@ -270,16 +294,25 @@ class primary():
             fractional = (analytic_y[num] - y[num]) / y[num]
             analytic_fracs.append(fractional)
 
-        axes[1].plot(x, analytic_fracs, lw=1, color="green")
-        axes[1].set(xlabel="t / Yr",
-                    ylabel="Dif. Fract. R(t)")
-        legend_elements = [Patch(facecolor='green', edgecolor='black', label="Analytic - Model")]  # ,
+        # Grab areas where fractional is to within 1% (alterable)
+        percentage = 1
+        analytic_satisfied, t_satisfied = [],[]
+        for num,frac in enumerate(analytic_fracs):
+            if np.abs(frac)*100 <= percentage:
+                analytic_satisfied.append(frac), t_satisfied.append(x[num])
+
+
+        # Error plotter
+        axes[1].plot(t_satisfied, analytic_satisfied, lw=2, color="green")
+        axes[1].plot(x, analytic_fracs, lw=1, color="red")
+        axes[1].set(xlabel="t / Gy",
+                    ylabel="Dif. Fract. R(t)",
+                    xlim=tlims)
+        legend_elements = [Patch(facecolor='red', edgecolor='black', label="Analytic - Model"),
+                           Patch(facecolor='green', edgecolor='black', label="Err <= 1%")]  # ,
         # Patch(facecolor='green', edgecolor='black', label="Av Fit")]
         axes[1].legend(handles=legend_elements, loc='upper right')
-
-
-
-
+        plt.savefig(astrowrapper.rootdir + "\\Figures\\" + "roft_default.png", dpi=300)
         plt.show()
 
 # This is for the w-model simulator.
@@ -287,6 +320,7 @@ class primary():
 # Also takes current density parameters, current Hubble. Uses density parameters to calculate the actual densities involved.
 # This one works with densities directly (will be adapted in future to deal with density parameters once adequate equation is given.
 # w and den in order of "matter, vacuum, radiation"
+# TODO: fix/etc like we did for other class
 class primary_w():
     def __init__(self, w, den, H0, R0, T0, X, agerange, group, set):
         self.w = w
@@ -346,20 +380,9 @@ class primary_w():
         table['R'], table['Rprime'], table['t'], table['logR'], table['logRprime'], table['logt'] = R, Rprime, t, logR, logRprime, logt
         filer.write_table(self.group, self.set, table)
 
-    # Returns value of R for flat radiationless lambda CDM, fed entire list of t
-    # Den is mat vac rad
-    def lambda_Cdm(self, t_list):
-        lamfrac = (self.den[1]/self.den[0])**(1/3)
-        hnought = self.OriH * 1e3 / mpc
-        t_list = t_list * (365*86400)
-        lamt = (2/(3 * hnought)) / (self.den[1]**0.5)
-        r_vals = [lamfrac*((np.sinh(t/lamt))**(2/3)) for t in t_list]
-        return r_vals
-
-
     # Visualize/Graph
     # Graphing/visualization
-    def R_grapher(self):
+    def R_grapher(self, tlims):
         # Get data
         data = filer.read_table(self.group, self.set)
         x, y = data['t'], data['R']
@@ -390,7 +413,8 @@ class primary_w():
         axes[0].plot(x, y, lw=1, color="black")
         axes[0].plot(x, self.lambda_Cdm(x), lw=1, color="red")
         axes[0].set(xlabel="t / Yr",
-                    ylabel="R(t)")
+                    ylabel="R(t)",
+                    xlims=tlims)
         legend_elements = [Patch(facecolor='black', edgecolor='black', label="Model"),
                            Patch(facecolor='red', edgecolor='black', label="Analytic")]  # ,
         # Patch(facecolor='green', edgecolor='black', label="Av Fit")]
@@ -398,7 +422,8 @@ class primary_w():
 
         axes[1].plot(x, self.lambda_Cdm(x) - y, lw=1, color="green")
         axes[1].set(xlabel="t / Yr",
-                    ylabel="Dif. R(t)")
+                    ylabel="Dif. R(t)",
+                    xlims=tlims)
         legend_elements = [Patch(facecolor='green', edgecolor='black', label="Analytic - Model")]  # ,
         # Patch(facecolor='green', edgecolor='black', label="Av Fit")]
         axes[1].legend(handles=legend_elements, loc='upper right')
@@ -427,18 +452,40 @@ class primary_w():
         self.integrator()
         self.R_grapher()
 
-#w_universe = primary_w(w_array, den_array, hub, 1, current_age, 1e7, [0, 3*current_age], "testing", "test_run")
-#w_universe.run()
-
-main = primary("Testing", "Testset", 1e7, 0, 2*current_age)
-main.integrator()
-main.R_grapher()
 
 
+#main = primary("Testing", "Testset", 1e-6, 0, 1*current_age)
+#main.integrator()
+#main.R_grapher([-0.5,1*current_age], [0,1], 0.174)
 
 
+# PARAMETER DEFINITIONS!!!
+dens_mat = 0.3
+dens_rad = 0
+dens_vac = 0.7
+den_array = [dens_mat, dens_vac, dens_rad] # Array of the three, MATTER:VACUUM:RADIATION
+w_array = [0, -1, 1/3] # Equation of state parameters, MATTER:VACUUM:RADIATION
+hub = 68 # Kms^-1Mpc^-1
+current_age = 13.7 # Gigayears.
+year = 365*86400 # seconds
+gigayear = year*(1e9)
+mpc = 3.0857*1e22 # metres
+G = 6.6743e-11 # standard units
+planck_time = mpf(scipy.constants.physical_constants['Planck time'][0])
+gyrplanckdiv = gigayear/planck_time
+w_inteconst = 4*np.pi*G * ((1e9*year)**2) / 3 # 4 * pi * G / 3 (in the form of gigayear^-2) for integration routines.
+hub_full = hub*(1e3)*(1/mpc)
 
+# Scalar Constants.
+scalar_hubble = hub*(1e3)*(1/mpc)*planck_time # Per Planck Unit Of Time
+time_step_in_gigayears = 1e-1
+time_step_in_planck_time = time_step_in_gigayears*gigayear/planck_time
+current_age_planck_time = current_age*gigayear/planck_time
 
+# Scalar Integrator/Universe Parameter Arrays
+field_params = [4, -2, [1,0], time_step_in_planck_time] # Massnorm, Alpha, Psi and Psidot & Timestep
+universe_object_parameters = [dens_mat, current_age_planck_time, 1, scalar_hubble, field_params, time_step_in_planck_time] # the scalar value is INITIAL R!
+primary_scalar_params = ["alpha_zero", "alpha_mintwo", 0, 1400*gyrplanckdiv, universe_object_parameters]
 
 
 
