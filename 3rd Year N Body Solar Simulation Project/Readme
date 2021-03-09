@@ -1,0 +1,5 @@
+energyplot.py has various utilities for generating normal energy(time) diagrams for orbits
+orbit_solver.py has tools to solve/reduce 3D elliptical orbits in the solar system via gram-schmidt to 2D and then matrix-solving (closure estimation included + periods + etc)
+parameter_detailer.py links to orbit_solver.py 
+Particle3D.py is a particle class. 
+
