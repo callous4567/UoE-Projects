@@ -1,0 +1,2 @@
+read_mist_models is from the guys who wrote MESA/MIST, specifically https://github.com/jieunchoi/MIST_codes/blob/master/scripts/read_mist_models.py.
+I've modified some functions within it for usage here. I don't know the original license, but yeah. This is a modified fork. 
