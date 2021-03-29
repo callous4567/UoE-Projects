@@ -75,7 +75,7 @@ font = {'family' : 'serif',
 
 mpl.rc('font', **font)
 
-#filer = astrowrapper.hdf5_writer("D:\Prog\pycharm\SHP2021\Code", "shp.hdf5")
+filer = astrowrapper.hdf5_writer("D:\Prog\pycharm\SHP2021\Code", "shp.hdf5")
 
 # ALL THE PARAMETERS THAT ONE MIGHT NEED! Give in the form of "density parameters" since all surveys quote like that.
 # Current values are random picked from book. If you give as raw densities, then alter the code to to account for this.
@@ -203,12 +203,13 @@ class lambda_cdm():
 # Group is save group identity. Step in years for integrators.
 # This is for the finite step model that Andy said to use.
 class primary():
-    def __init__(self, group, set, step, age_min, age_max, minRmaxR):
+    def __init__(self, group, set, age_min, age_max, minRmaxR, multistep, Rtransition):
         self.group, self.set = group, set
-        self.X = step
         self.agemin = age_min
         self.agemax = age_max
         self.minRmaxR = minRmaxR
+        self.multistep = multistep
+        self.Rtransition = Rtransition
 
 
     # Integrator. Define two Universes (one going back, one going forward.)
@@ -225,32 +226,63 @@ class primary():
         if self.minRmaxR == False:
             # Loop for FORWARD integrator
             while True:
-                forwd.forstep(self.X)
-                Fordump.append(forwd.dump())
-                if forwd.age > self.agemax:
-                    break
+                if forwd.R >= self.Rtransition:
+                    # Greater than transition. Use large step.
+                    forwd.forstep(self.multistep[0])
+                    Fordump.append(forwd.dump())
+                    if forwd.age > self.agemax:
+                        break
+                else:
+                    # Less than transition. Use smol step.
+                    forwd.forstep(self.multistep[1])
+                    Fordump.append(forwd.dump())
+                    if forwd.age > self.agemax:
+                        break
             # Loop for BACKWARD integrator
             while True:
-                backwd.backstep(self.X)
-                Backdump.append(backwd.dump())
-                if backwd.age <= self.agemin:
-                    break
+                # Less than transition. Use small step.
+                if backwd.R < self.Rtransition:
+                    backwd.backstep(self.multistep[1])
+                    Backdump.append(backwd.dump())
+                    if backwd.age <= self.agemin:
+                        break
+                # Greater than or equal to transition. Use large step.
+                else:
+                    backwd.backstep(self.multistep[0])
+                    Backdump.append(backwd.dump())
+                    if backwd.age <= self.agemin:
+                        break
         if self.minRmaxR != False:
             # Loop for FORWARD integrator
             minR,maxR = self.minRmaxR
             while True:
                 if forwd.R > maxR:
                     break
-                forwd.forstep(self.X)
-                Fordump.append(forwd.dump())
+                # Above transition: large step
+                if forwd.R >= self.Rtransition:
+                    forwd.forstep(self.multistep[0])
+                    Fordump.append(forwd.dump())
+                # Below. Small step.
+                else:
+                    forwd.forstep(self.multistep[1])
+                    Fordump.append(forwd.dump())
 
             # Loop for BACKWARD integrator
             while True:
-                backwd.backstep(self.X)
-                if backwd.R >= minR:
-                    Backdump.append(backwd.dump())
+                # Below. Use small step.
+                if backwd.R < self.Rtransition:
+                    backwd.backstep(self.multistep[1])
+                    if backwd.R >= minR:
+                        Backdump.append(backwd.dump())
+                    else:
+                        break
+                # Above. Large step
                 else:
-                    break
+                    backwd.backstep(self.multistep[0])
+                    if backwd.R >= minR:
+                        Backdump.append(backwd.dump())
+                    else:
+                        break
         # Format + save data. Both have same initial value (same age/etc) so clip the first element of backdump.
         Backdump = Backdump[1:]
         Backdump.reverse()
@@ -487,31 +519,46 @@ class primary_w():
 
 
 
-# Parameters to set for integrator/etc.
+"""
+FINAL CONSTANTS FOR INTEGRATION
+t = -0.015299719978238067
+R = 9.039240480615748E-7 
+H = 4.402022513073902E10 
+"""
+
+# Legacy Parameters.
 dens_mat, dens_vac, dens_rad = 0.3, 0.7, 0
 w_array = [0, -1, 1/3] # Equation of state parameters, MATTER:VACUUM:RADIATION
-time_step_in_gigayears = 1e-3 # 1e-12 # 1
-multi_time_step_in_gigayears = [1e-9, 1e-3] # Test to be used with scalar field integrator for when R is very small (<= 10^-3) to improve sim accuracy.
-transition_R = 1e-4 # for transition from the low_step ([1]) to fast_step ([0]) regime.
-hub_R_ONE, age_R_ONE = 68, 13.7
-current_age, hub = -0.1726666736404837, 5.0292516379746115e8
-scalar_init_R = 1.7635080617517368e-5 # 68 13.7 kms^-1mpc^-1
-field_params = [1, 2, [4,0]] # Massnorm, Alpha, Psi and Psidot
-scalar_filenames = "alpha_zero"
-scalar_minmaxage = [-0.1726673736404837,100] # [-0.2,100]
-scalar_minmaxR = False # [0,20] # [0,1] # To terminate loops using R instead of age, change from False to some [min,max]
-t_shift = 0.174
-t_limits = [-0.174, 100]
+multi_time_step_in_gigayears = [10**-3, 10**-4] # Test to be used with scalar field integrator for when R is very small (<= 10^-3) to improve sim accuracy.
+transition_R = 0.1 # for transition from the low_step ([1]) to fast_step ([0]) regime.
+age_R_ONE, hub_R_ONE = 13.7, 68  # 13.7971, 67.32 # leave as default from Planck 2018
+scalar_init_R_ONE = 1
+scalar_minmaxR = [0.01,100]
+t_shift = 0.1737
+scalar_filename = "alpha_zero"
+scalar_minmaxage = [-0.3,56] # [-0.2,100]
+scalar_minmaxage_nought = copy.deepcopy(scalar_minmaxage)
+
+# SIMPLIFICATION.
+# Scalar field model takes INITIAL MATTER DENSITY
+# This is set by the initialization R value + modifies our present-day density.
+# Scalar field model takes INITIAL SCALAR FIELD DENSITY
+# This is set by some factor F, the ratio of scalar divided by matter.
+# Scalar field model takes INITIAL FIELD VALUE AND DERIVATIVE
+# Combined with initial density, defines the mass parameter.
+# Initial age is given analogously to LCDM for the initial R/etc.
+current_age, hub = -0.15518124978059802, hub_R_ONE # 37245.173264532576
+scalar_init_R = 0.01
+field_params = [2e-7, 0, [1, 0]] # Ratio, Alpha, [Psi, Psiprime]
 
 
 # Misc formatting of parameters/etc for all the various integrators we have set up.
 den_array = [dens_mat, dens_vac, dens_rad] # Array of the three, MATTER:VACUUM:RADIATION
 year = 365*86400 # seconds
 gigayear = year*(1e9)
-mpc = 3.0857*1e22 # metres
-G = 6.6743e-11 # standard units
+mpc = 1e6*scipy.constants.parsec
+G = scipy.constants.physical_constants['Newtonian constant of gravitation'][0] # standard units
 planck_time = mpf(scipy.constants.physical_constants['Planck time'][0])
-planck_mass = mpf(scipy.constants.physical_constants['Planck mass'][0])
 gyrplanckdiv = gigayear/planck_time
 w_inteconst = 4*np.pi*G * ((1e9*year)**2) / 3 # 4 * pi * G / 3 (in the form of gigayear^-2) for integration routines.
 scalar_minmaxage = np.array(scalar_minmaxage)/planck_time * 1e9 * year
@@ -530,32 +577,32 @@ hub_full_init = hub*(1e3)*(1/mpc) # per second
 integrator_critical_density_init = (3 * (hub_full_init**2)) / (8 * np.pi * G)
 integrator_matter_density_absolute = current_matter_density_absolute * (scalar_init_R**-3)
 
-
-# Also calculate matter "relative" density parameter for integrator start.
-matter_density_parameter_init = integrator_matter_density_absolute/integrator_critical_density_init
-
-# Then go and get the initial density in terms of planck masses (divide by planck mass.)
-init_density_div_planck_mass_squared = integrator_matter_density_absolute / (planck_time**2)
-
 # Scalar Constants.
 scalar_hubble = hub*(1e3)*(1/mpc)*planck_time # units of tp^-1
-time_step_in_planck_time = time_step_in_gigayears*gigayear/planck_time
 multi_time_step_in_planck_time = np.array(multi_time_step_in_gigayears)*gigayear/planck_time
 current_age_planck_time = current_age*gigayear/planck_time
 
 # Scalar Integrator/Universe Parameter Arrays
-universe_object_parameters = [matter_density_parameter_init, current_age_planck_time, scalar_init_R, scalar_hubble, field_params] # the scalar value is INITIAL R!
-primary_scalar_params = [scalar_filenames, *scalar_minmaxage, universe_object_parameters, scalar_minmaxR, multi_time_step_in_planck_time, transition_R]
-
+universe_object_parameters = [current_age_planck_time, scalar_init_R, field_params] # the scalar value is INITIAL R!
+primary_scalar_params = [scalar_filename, *scalar_minmaxage, universe_object_parameters, scalar_minmaxR, multi_time_step_in_planck_time, transition_R]
 
 
 
 # Default Integrator
-#main = primary("Final", "Finalset", time_step_in_gigayears, *scalar_minmaxage, scalar_minmaxR) # Finalset has 1e-7 steps
+#main = primary("Final", "Finalset", *scalar_minmaxage, scalar_minmaxR, multi_time_step_in_gigayears, transition_R) # Finalset has 1e-7 steps
 #main.integrator()
-#main.R_grapher([-0.18,-0.150], [0,0.1], t_shift)
+#main.R_grapher([-0.18,14], [0,1], t_shift)
 
 # According to the primary model... we'll start near R = 10^-5 (a few timesteps before zero...)
+"""
+FINAL CONSTANTS FOR INTEGRATION
+t = -0.015299719978238067
+R = 9.039240480615748E-7 
+H = 4.402022513073902E10 
+"""
+
+
+#According to the primary model... we'll start near R = 10^-5 (a few timesteps before zero...)
 """
 t = -0.1726673736404837 Gyr 
 R = 1.065708378629629e-5 
@@ -563,10 +610,16 @@ H = 1.0705623595312455e9 kms^-1 Mpc^-1
 hub, current_age = -0.1726673736404837, 1.0705623595312455e9
 (for these simulation params)
 scalar_init_R = 1.065708378629629e-5 
-
-
 # LET'S GO FOR A LATER START INSTEAD!!! (for accuracy/fast-runs)
 # ELEMENT 13
 current_age, hub = -0.1726666736404837, 5.0292516379746115e8 
 scalar_init_R = 1.7635080617517368e-5
+"""
+
+
+# More. 1E-2
+"""
+current_age, hub = -0.15518124978059802, 38.064743302015735
+scalar_init_R = 0.010000000733600039
+
 """
