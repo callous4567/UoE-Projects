@@ -258,15 +258,16 @@ class primary_scalar():
             # Forward Loop
             while True:
                 # R conditions & Age Coonditions
-                if forwd.R > self.minmaxR[1]:
-                    break
                 if forwd.age > self.agemax:
                     break
                 else:
                     # R exceeds transition. Use upper step.
                     if forwd.R >= self.transition_R:
                         forwd.forstep(self.multistep[0])
-                        Fordump.append(forwd.dump())
+                        if forwd.R > self.minmaxR[1]:
+                            break
+                        else:
+                            Fordump.append(forwd.dump())
                     # R is lower than transition, use lower step.
                     else:
                         forwd.forstep(self.multistep[1])
@@ -543,59 +544,121 @@ class primary_scalar():
     def main_multi(self):
         try:
             table = self.integrator()
-            self.grapher([-0.3, 56], False, 0.1726673736404837, [-1.1,1.1], False, False, [0, 2e-26], table) # hard coded sorry mate
+            return table
+            #self.grapher([-0.3, 56], False, 0.1726673736404837, [-1.1,1.1], False, False, [0, 2e-26], table) # hard coded sorry mate
         except:
             pass
 
+"""
+# Will run for a set of initial parameters and plot on the same graph for each set.
+def multirun(parameter_list_of_lists):
+    # create models
+    scalobjects = [primary_scalar(*d) for d in parameter_list_of_lists]
+    # grab data and "working" models
+    scaltables = []
+    scalobjects_clipped = []
+    for scalobj in scalobjects:
+        try:
+            scaltables.append(scalobj.main_multi())
+            scalobjects_clipped.append(scalobj)
+        except:
+            pass
+    # Gotta grab the correct labels, specifically $F$.
+    # These are the final plots for the report
+    # Consequently, single alpha, vary F, for a given value of psi, just to illustrate evolution.
+    alpha = scalobjects[0].UNIVERSEPARAMS[2][1]
+    psi = scalobjects[0].UNIVERSEPARAMS[2][2][0]
+    alpha_format = ("{0:.0f}").format(alpha)
+    psiformat = ("{0:.1e}").format(psi)
+    fractions = [d.UNIVERSEPARAMS[2][0] for d in scalobjects_clipped]
+    fracformat = [("{0:.1e}").format(frac) for frac in fractions]
 
-#scalar_universe = primary_scalar(*primary.primary_scalar_params)
-#owo = scalar_universe.integrator()
-#scalar_universe.grapher([-0.2, 14], [0,1], primary.t_shift, [-2,2], False, False, [0, 1e-26],owo)  # t_lims, r_lims, t_shift_for_analytic, w_lims, omega_lims, field_lims, gamma lims
+    # Next grab all the t, R, H, psi, psidot, for the models.
+    ts = [d['t'] for d in scaltables]
+    Rs = [d['R'] for d in scaltables]
+    psis = [d['psi'] for d in scaltables]
+
+    # Get the rolling matter densities
+    rolling_densities = [primary.current_matter_density_absolute/(d**3) for d in Rs]
+
+    # Kinetic and Potential Terms
+    halfpsiprimesqs, massivegammas = [0.5*d['psiprime']**2 for d in scaltables],\
+                                     [d['massive_gamma'] for d in scaltables]
+    halfpsiprimesqsact, massivegammasact = [d/(primary.planck_time**2 * primary.G) for d in halfpsiprimesqs],\
+                                           [d/(primary.planck_time**2 * primary.G) for d in massivegammas]
+
+    halfpsiprimesqsact, massivegammasact = np.array(halfpsiprimesqsact), np.array(massivegammasact)
+    equation_of_states = (halfpsiprimesqsact - massivegammasact)/(halfpsiprimesqsact + massivegammasact)
+    total_density = halfpsiprimesqsact + massivegammasact
+    # We want graphs comparing R(t), psi, and density. Set a limit: 5 plots per run (clear.)
+    colours = "red", "green", "pink", "blue", "purple", 'sienna','gold','darkorange','lime','aquamarine','mediumorchid', "hotpink", "deepskyblue", "olive"
+    figR, axes = plt.subplots(3,figsize=(8,10),dpi=300, sharex="col",  constrained_layout=True)
+    axes[0].text(.005, .96, "Scale Factor",
+                 horizontalalignment='left',
+                 transform=axes[0].transAxes)
+    axes[0].set(ylabel=r'$a(t)$')
+    axes[1].text(.005, .96, "(Dimensionless) Scalar Field",
+                 horizontalalignment='left',
+                 transform=axes[1].transAxes)
+    axes[1].set(ylabel=r'$\psi(t)$')
+    axes[2].text(.005, .96, "Equation of State",
+                 horizontalalignment='left',
+                 transform=axes[2].transAxes)
+    axes[2].set(xlabel="t / Gyr",
+                ylabel=r'$w_\psi(t)$')
+    figR.suptitle(r'$\alpha,\psi$' + (" = {0},{1}").format(alpha_format, psiformat))
+    colourpatches = []
+    for num, tseries in enumerate(ts):
+        x = tseries*primary.planck_time/primary.gigayear
+        axes[0].plot(x, Rs[num], color=colours[num])
+        axes[1].plot(x, psis[num], color=colours[num])
+        axes[2].plot(x, equation_of_states[num], color=colours[num])
+        colourpatches.append(Patch(edgecolor=None, facecolor=colours[num],label=fracformat[num]))
+
+    # Legend elements for the actual burns
+    #shrinker = 0.8
+    #bboxta = (1.3, 0.48)
+    #box = axes[0].get_position()
+    #axes[0].set_position([box.x0, box.y0, box.width * shrinker, box.height])
+    axes[0].legend(handles=colourpatches, loc='upper right', title="F") # , bbox_to_anchor=bboxta)
+    #box = axes[1].get_position()
+    #axes[1].set_position([box.x0, box.y0, box.width * shrinker, box.height])
+    plt.savefig(astrowrapper.rootdir + "\\Figures\\" + alpha_format + "\\" + psiformat + "_" + "allplot.png")
+    plt.show()
+
+    # Also set up relevant density plots.
+    figden, axden = plt.subplots(1, constrained_layout="True",dpi=300)
+    figden.suptitle(r'$\alpha,\psi$' + (" = {0},{1}").format(alpha_format, psiformat))
+    scalar_density = total_density
+    matter_density = rolling_densities
+    colourpatches = []
+    for num, rseries in enumerate(Rs):
+        x = rseries
+        axden.plot(x, scalar_density[num], color=colours[num])
+        axden.plot(x, matter_density[num], color="black")
+        colourpatches.append(Patch(edgecolor=None, facecolor=colours[num],label=r'$\rho_\phi$' + ", F=" + fracformat[num]))
+
+    colourpatches.append(Patch(edgecolor=None, facecolor="black", label=r'$\rho_m$'))
+    axden.legend(handles=colourpatches, loc="upper right", title=r'$\rho_i$')
+    axden.set_xscale('log')
+    axden.set_yscale('log')
+    axden.set(ylim=[10**-30,10**-17],
+              xlabel="a",
+              ylabel=r'$\rho_i(a)$' + " / kgm" + r'$^{-3}$')
+    plt.savefig(astrowrapper.rootdir +"\\Figures\\" + alpha_format + "\\" + psiformat+"_"+"densplot.png")
+    plt.show()
 
 
-
-
-# Misc multiprocessing stuff to make things run fast. Masking is per sim.
-def masking(scalarparams):
-    # Run all sim stuff
-    scalobject = primary_scalar(*scalarparams)
-    scalobject.main_multi()
-    # Remove the pickle
-    try:
-        os.remove(astrowrapper.rootdir + "\\" + scalarparams[0] + '.pickle')
-    except:
-        pass
-    # Pickle the primary_scalar object (for the sake of later analyses)
-    f_myfile = open(astrowrapper.rootdir + "\\Trials\\" + scalobject.set + '.pickle', 'wb')
-    pickle.dump(scalobject, f_myfile)
-    f_myfile.close()
-
-# Multiprocess the sims. We've modified the code!!!
-def miscellaneous_simrunner():
+def miscellaneous_simrunner_report(alphas, psis):
     # We need to set this up unique for each range.
-    possible_alpha = [3, 4] # -2, 1, 2,
-    fracexparange = np.linspace(-7, 0, 40)
-    possible_fractions = [10**float(d) for d in fracexparange]
-    psiexparange = np.linspace(-2, 1, 30)
-    possible_psis = [10**float(d) for d in psiexparange]
-    psiprimearange = np.linspace(-65, -59, 10)
-    possible_primes = [10 ** float(d) for d in psiprimearange]
-    possible_primes.append(0)
-    possible_psiprimes_mintwo = [-1*d for d in possible_primes]
+    psiprimes = [0]
+    fractions = [4e-3,2e-3,1e-3,1e-4,1e-5,1e-6,1e-7]
     parameter_arrays = []
 
-    possible_psialphas = [possible_psis for d in possible_alpha]
-    possible_psiprimesalphas = [possible_psiprimes_mintwo, possible_primes,possible_primes,possible_primes,possible_primes]
-
-    #new_alphas = [2]
-    #fracs = possible_fractions
-    #psis = [possible_psis]
-    #psiprimes = [possible_primes]
-
-    for num, alpha in enumerate(possible_alpha):
-        for psi in possible_psialphas[num]:
-            for psiprime in possible_psiprimesalphas[num]:
-                for denfrac in possible_fractions:
+    for num, alpha in enumerate(alphas):
+        for psi in psis:
+            for psiprime in psiprimes:
+                for denfrac in fractions:
                     try:
                         filename = ("{0:.2e}_{1:.2e}_{2:.1e}_{3:.0f}").format(psi, psiprime, denfrac, alpha)
                         newfieldparams = [denfrac, alpha, [psi,psiprime]]
@@ -606,77 +669,137 @@ def miscellaneous_simrunner():
                     except Exception as e:
                         print("fucked", e)
                         pass
+    multirun(parameter_arrays)
+alphalist, psilist = [8],[1e-1,2e-1,3e-1,4e-1,5e-1] # , 2, 0 , 4,30
+for alpha in alphalist:
+    for psi in psilist:
+        miscellaneous_simrunner_report([alpha],[psi])"""
 
+# Will run for a set of initial parameters and plot on the same graph for each set.
+def multirun(parameter_list_of_lists):
+    # create models
+    scalobjects = [primary_scalar(*d) for d in parameter_list_of_lists]
+    # grab data and "working" models
+    scaltables = []
+    scalobjects_clipped = []
+    for scalobj in scalobjects:
+        try:
+            table = scalobj.main_multi()
+            uwa = table['t']**2
+            scaltables.append(table)
+            scalobjects_clipped.append(scalobj)
+        except:
+            pass
+    # Gotta grab the correct labels, specifically $F$.
+    # These are the final plots for the report
+    # Consequently, single alpha, vary F, for a given value of psi, just to illustrate evolution.
+    alpha = scalobjects[0].UNIVERSEPARAMS[2][1]
+    psi = scalobjects[0].UNIVERSEPARAMS[2][2][0]
+    alpha_format = ("{0:.0f}").format(alpha)
+    frac_format = ("{0:.1e}").format(scalobjects_clipped[0].UNIVERSEPARAMS[2][0])
+    psiformat = ("{0:.1e}").format(psi)
+    psiprimes = [d.UNIVERSEPARAMS[2][2][1] for d in scalobjects_clipped]
+    psiprimesformats = [("{0:.1e}").format(frac) for frac in psiprimes]
 
+    # Next grab all the t, R, H, psi, psidot, for the models.
+    ts = [d['t'] for d in scaltables]
+    Rs = [d['R'] for d in scaltables]
+    psis = [d['psi'] for d in scaltables]
 
-    if __name__ == '__main__':
-        pool = multiprocessing.Pool(10)
-        pool.map(masking, parameter_arrays)
-    else:
-        print("Not main, mate.")
-miscellaneous_simrunner()
+    # Get the rolling matter densities
+    rolling_densities = [primary.current_matter_density_absolute/(d**3) for d in Rs]
 
-# Takes a list of scalar_field objects and does various plots. Modified to handle "FRAC".
-def pickle_plotter(scalar_list, alpha):
-    # Generic scatter plot for all points. First collect up the [psi, psiprime] for each point.
-    fracs = [d.UNIVERSEPARAMS[2][0] for d in scalar_list]
-    psis = [d.UNIVERSEPARAMS[2][2][0] for d in scalar_list]
-    satisfieds = [d.satisfied for d in scalar_list]
-    greens, reds = [],[]
-    psigruns, psirots = [],[]
-    for num, sat in enumerate(satisfieds):
-        if sat == "True":
-            greens.append(fracs[num])
-            psigruns.append(psis[num])
-        if sat == "False":
-            reds.append(fracs[num])
-            psirots.append(psis[num])
+    # Kinetic and Potential Terms
+    halfpsiprimesqs, massivegammas = [0.5*d['psiprime']**2 for d in scaltables],\
+                                     [d['massive_gamma'] for d in scaltables]
+    halfpsiprimesqsact, massivegammasact = [d/(primary.planck_time**2 * primary.G) for d in halfpsiprimesqs],\
+                                           [d/(primary.planck_time**2 * primary.G) for d in massivegammas]
 
+    halfpsiprimesqsact, massivegammasact = np.array(halfpsiprimesqsact), np.array(massivegammasact)
+    equation_of_states = (halfpsiprimesqsact - massivegammasact)/(halfpsiprimesqsact + massivegammasact)
+    total_density = halfpsiprimesqsact + massivegammasact
+    # We want graphs comparing R(t), psi, and density. Set a limit: 5 plots per run (clear.)
+    colours = "red", "green", "pink", "blue", "purple", 'sienna','gold','darkorange','lime','aquamarine','mediumorchid', "hotpink", "deepskyblue", "olive"
+    figR, axes = plt.subplots(3,figsize=(8,10),dpi=300, sharex="col",  constrained_layout=True)
+    axes[0].text(.005, .96, "Scale Factor",
+                 horizontalalignment='left',
+                 transform=axes[0].transAxes)
+    axes[0].set(ylabel=r'$a(t)$')
+    axes[1].text(.005, .96, "(Dimensionless) Scalar Field",
+                 horizontalalignment='left',
+                 transform=axes[1].transAxes)
+    axes[1].set(ylabel=r'$\psi(t)$')
+    axes[2].text(.005, .96, "Equation of State",
+                 horizontalalignment='left',
+                 transform=axes[2].transAxes)
+    axes[2].set(xlabel="t / Gyr",
+                ylabel=r'$w_\psi(t)$')
+    figR.suptitle(r'$\alpha,\psi,F$' + (" = {0},{1},{2}").format(alpha_format, psiformat, frac_format))
+    colourpatches = []
+    for num, tseries in enumerate(ts):
+        x = tseries*primary.planck_time/primary.gigayear
+        axes[0].plot(x, Rs[num], color=colours[num])
+        axes[1].plot(x, psis[num], color=colours[num])
+        axes[2].plot(x, equation_of_states[num], color=colours[num])
+        colourpatches.append(Patch(edgecolor=None, facecolor=colours[num],label=psiprimesformats[num]))
 
-
-    # Next produce the plot
-    fig, axs = plt.subplots(1)
-    axs.scatter(psirots,reds, color="red", label="Invalid", s=16)
-    axs.scatter(psigruns,greens, color="green",label="Valid", s=16)
-    axs.set(xlabel="psi",
-            ylabel="frac",
-            title=alpha + ", psiprime is 0",
-            xlim=[0,1])# ,ylim=[0.0675e-60, 0.09e-60]
-    axs.legend()
+    # Legend elements for the actual burns
+    #shrinker = 0.8
+    #bboxta = (1.3, 0.48)
+    #box = axes[0].get_position()
+    #axes[0].set_position([box.x0, box.y0, box.width * shrinker, box.height])
+    axes[0].legend(handles=colourpatches, loc='upper right', title=r'$\dot\psi$') # , bbox_to_anchor=bboxta)
+    #box = axes[1].get_position()
+    #axes[1].set_position([box.x0, box.y0, box.width * shrinker, box.height])
+    plt.savefig(astrowrapper.rootdir + "\\Figures\\" + alpha_format + "\\" + psiformat + "_" + "speedallplot.png")
     plt.show()
 
+    # Also set up relevant density plots.
+    figden, axden = plt.subplots(1, constrained_layout="True",dpi=300)
+    figden.suptitle(r'$\alpha,\psi,F$' + (" = {0},{1},{2}").format(alpha_format, psiformat,frac_format))
+    scalar_density = total_density
+    matter_density = rolling_densities
+    colourpatches = []
+    for num, rseries in enumerate(Rs):
+        x = rseries
+        axden.plot(x, scalar_density[num], color=colours[num])
+        axden.plot(x, matter_density[num], color="black")
+        colourpatches.append(Patch(edgecolor=None, facecolor=colours[num],label=r'$\rho_\phi$' + ", " + r'$\dot\psi= $' + psiprimesformats[num]))
 
+    colourpatches.append(Patch(edgecolor=None, facecolor="black", label=r'$\rho_m$'))
+    axden.legend(handles=colourpatches, loc="upper right", title=r'$\rho_i$')
+    axden.set_xscale('log')
+    axden.set_yscale('log')
+    axden.set(ylim=[10**-30,10**-17],
+              xlabel="a",
+              ylabel=r'$\rho_i(a)$' + " / kgm" + r'$^{-3}$')
+    plt.savefig(astrowrapper.rootdir +"\\Figures\\" + alpha_format + "\\" + psiformat+"_"+"speeddensplot.png")
+    plt.show()
 
+def miscellaneous_simrunner_report(alphas, psis):
+    # We need to set this up unique for each range.
+    psiprimes = [1e-60,0.9e-60,0.8e-60,0.6e-60,5e-61,1e-61]
+    fractions = [1e-3]
+    parameter_arrays = []
 
+    for num, alpha in enumerate(alphas):
+        for psi in psis:
+            for psiprime in psiprimes:
+                for denfrac in fractions:
+                    try:
+                        filename = ("{0:.2e}_{1:.2e}_{2:.1e}_{3:.0f}").format(psi, psiprime, denfrac, alpha)
+                        newfieldparams = [denfrac, alpha, [psi,psiprime]]
+                        array = copy.deepcopy(primary.primary_scalar_params)
+                        array[0] = filename
+                        array[3][2] = newfieldparams
+                        parameter_arrays.append(array)
+                    except Exception as e:
+                        print("fucked", e)
+                        pass
+    multirun(parameter_arrays)
 
-# This misc function will collect up all the pickles and produce graphs for validity using pickle_plotter.
-def pickle_analysis(alphas):
-    # Collect up all pickles
-    os.chdir(astrowrapper.rootdir + "\\Trials")
-    files = os.listdir()
-    scalar_field_objects = []
-    for file in files:
-        f_myfile = open(file, 'rb')
-        field_object = pickle.load(f_myfile)
-        scalar_field_objects.append(field_object)
-        f_myfile.close()
-
-    # Set up alpha strings + relevant lists to hold tuples for each alpha (for plotting)
-    alphastr = [("{0:.0f}").format(d) for d in alphas] # string it up
-    alpha_lists = [[] for d in alphastr]
-
-    # Split up the pickles into relevant alpha_list
-    object_alphas = [("{0:.0f}").format(d.UNIVERSEPARAMS[2][1]) for d in scalar_field_objects]
-    for num, alpha in enumerate(alphastr):
-        for object_num, object_alpha in enumerate(object_alphas):
-            if alpha == object_alpha:
-                alpha_lists[num].append(scalar_field_objects[object_num])
-
-
-    # Then run the plotting function for each relevant scalar object list.
-    for num,alphalist in enumerate(alpha_lists):
-        pickle_plotter(alphalist, alphastr[num])
-#pickle_analysis([-2,1,2,3,4])
-
-
-
+alphalist = [2]
+psilist = [0.1]
+for alpha in alphalist:
+    for psi in psilist:
+        miscellaneous_simrunner_report([alpha],[psi])

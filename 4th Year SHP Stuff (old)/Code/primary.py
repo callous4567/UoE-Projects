@@ -533,10 +533,10 @@ multi_time_step_in_gigayears = [10**-3, 10**-4] # Test to be used with scalar fi
 transition_R = 0.1 # for transition from the low_step ([1]) to fast_step ([0]) regime.
 age_R_ONE, hub_R_ONE = 13.7, 68  # 13.7971, 67.32 # leave as default from Planck 2018
 scalar_init_R_ONE = 1
-scalar_minmaxR = [0.01,100]
+scalar_minmaxR = [0.010000000000001,15]
 t_shift = 0.1737
 scalar_filename = "alpha_zero"
-scalar_minmaxage = [-0.3,56] # [-0.2,100]
+scalar_minmaxage = [-0.3,30] # [-0.2,100]
 scalar_minmaxage_nought = copy.deepcopy(scalar_minmaxage)
 
 # SIMPLIFICATION.
@@ -621,5 +621,133 @@ scalar_init_R = 1.7635080617517368e-5
 """
 current_age, hub = -0.15518124978059802, 38.064743302015735
 scalar_init_R = 0.010000000733600039
+
+"""
+
+# DEPRECATED STUFF FROM SECONDARY
+
+
+
+"""
+
+
+# Misc multiprocessing stuff to make things run fast. Masking is per sim.
+def masking(scalarparams):
+    # Run all sim stuff
+    scalobject = primary_scalar(*scalarparams)
+    scalobject.main_multi()
+    # Remove the pickle
+    try:
+        os.remove(astrowrapper.rootdir + "\\" + scalarparams[0] + '.pickle')
+    except:
+        pass
+    # Pickle the primary_scalar object (for the sake of later analyses)
+    f_myfile = open(astrowrapper.rootdir + "\\Trials\\" + scalobject.set + '.pickle', 'wb')
+    pickle.dump(scalobject, f_myfile)
+    f_myfile.close()
+    
+# Multiprocess the sims. We've modified the code!!!
+def miscellaneous_simrunner():
+    # We need to set this up unique for each range.
+    possible_alpha = [3, 4] # -2, 1, 2,
+    fracexparange = np.linspace(-7, 0, 40)
+    possible_fractions = [10**float(d) for d in fracexparange]
+    psiexparange = np.linspace(-2, 1, 30)
+    possible_psis = [10**float(d) for d in psiexparange]
+    psiprimearange = np.linspace(-65, -59, 10)
+    possible_primes = [10 ** float(d) for d in psiprimearange]
+    possible_primes.append(0)
+    possible_psiprimes_mintwo = [-1*d for d in possible_primes]
+    parameter_arrays = []
+
+    possible_psialphas = [possible_psis for d in possible_alpha]
+    possible_psiprimesalphas = [possible_psiprimes_mintwo, possible_primes,possible_primes,possible_primes,possible_primes]
+
+    #new_alphas = [2]
+    #fracs = possible_fractions
+    #psis = [possible_psis]
+    #psiprimes = [possible_primes]
+
+    for num, alpha in enumerate(possible_alpha):
+        for psi in possible_psialphas[num]:
+            for psiprime in possible_psiprimesalphas[num]:
+                for denfrac in possible_fractions:
+                    try:
+                        filename = ("{0:.2e}_{1:.2e}_{2:.1e}_{3:.0f}").format(psi, psiprime, denfrac, alpha)
+                        newfieldparams = [denfrac, alpha, [psi,psiprime]]
+                        array = copy.deepcopy(primary.primary_scalar_params)
+                        array[0] = filename
+                        array[3][2] = newfieldparams
+                        parameter_arrays.append(array)
+                    except Exception as e:
+                        print("fucked", e)
+                        pass
+
+
+
+    if __name__ == '__main__':
+        pool = multiprocessing.Pool(10)
+        pool.map(masking, parameter_arrays)
+    else:
+        print("Not main, mate.")
+  
+    
+# Takes a list of scalar_field objects and does various plots. Modified to handle "FRAC".
+def pickle_plotter(scalar_list, alpha):
+    # Generic scatter plot for all points. First collect up the [psi, psiprime] for each point.
+    fracs = [d.UNIVERSEPARAMS[2][0] for d in scalar_list]
+    psis = [d.UNIVERSEPARAMS[2][2][0] for d in scalar_list]
+    satisfieds = [d.satisfied for d in scalar_list]
+    greens, reds = [],[]
+    psigruns, psirots = [],[]
+    for num, sat in enumerate(satisfieds):
+        if sat == "True":
+            greens.append(fracs[num])
+            psigruns.append(psis[num])
+        if sat == "False":
+            reds.append(fracs[num])
+            psirots.append(psis[num])
+
+
+
+    # Next produce the plot
+    fig, axs = plt.subplots(1)
+    axs.scatter(psirots,reds, color="red", label="Invalid", s=16)
+    axs.scatter(psigruns,greens, color="green",label="Valid", s=16)
+    axs.set(xlabel="psi",
+            ylabel="frac",
+            title=alpha + ", psiprime is 0",
+            xlim=[0,1])# ,ylim=[0.0675e-60, 0.09e-60]
+    axs.legend()
+    plt.show()
+# This misc function will collect up all the pickles and produce graphs for validity using pickle_plotter.
+def pickle_analysis(alphas):
+    # Collect up all pickles
+    os.chdir(astrowrapper.rootdir + "\\Trials")
+    files = os.listdir()
+    scalar_field_objects = []
+    for file in files:
+        f_myfile = open(file, 'rb')
+        field_object = pickle.load(f_myfile)
+        scalar_field_objects.append(field_object)
+        f_myfile.close()
+
+    # Set up alpha strings + relevant lists to hold tuples for each alpha (for plotting)
+    alphastr = [("{0:.0f}").format(d) for d in alphas] # string it up
+    alpha_lists = [[] for d in alphastr]
+
+    # Split up the pickles into relevant alpha_list
+    object_alphas = [("{0:.0f}").format(d.UNIVERSEPARAMS[2][1]) for d in scalar_field_objects]
+    for num, alpha in enumerate(alphastr):
+        for object_num, object_alpha in enumerate(object_alphas):
+            if alpha == object_alpha:
+                alpha_lists[num].append(scalar_field_objects[object_num])
+
+
+    # Then run the plotting function for each relevant scalar object list.
+    for num,alphalist in enumerate(alpha_lists):
+        pickle_plotter(alphalist, alphastr[num])
+#pickle_analysis([-2,1,2,3,4])
+
 
 """
