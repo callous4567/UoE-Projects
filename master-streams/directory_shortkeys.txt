@@ -1,0 +1,6 @@
+This file just holds various cheat codes to directories, for Windows/Linux.
+
+WINDOWS SHORTKEYS
+C:\\Users\\Callicious\\Documents\\Prog\\pycharm\\master-streams # Root Directory
+
+UBUNTU SHORTKEYS
