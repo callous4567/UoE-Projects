@@ -1,6 +1,5 @@
 # Galactocentric Transformation Parameters; Give coordinates in Galactocentric Coordinates, Right Handed.
 # Solar Position Vector; kpc. Radius from 2018 Gravity Collaboration, Z-axis from Bennett-Bovy 2018.
-# These are Jorge's Coordinates that he used.
 sol_pos; -8.3, 0, 0.03
 # Solar Position Vector Error; kpc.
 sol_pos_err; 0.013, 0, 0.0003
