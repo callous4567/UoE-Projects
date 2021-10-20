@@ -7,7 +7,7 @@ import os
 
 import galcentricutils
 import windows_directories
-from windows_directories import datadir, asciidir
+from windows_directories import datadir, asciidir, sourcedir
 from ascii_info import asciiname, fullgroup, fullset, set_raw
 
 # Future notes for using columns
@@ -40,19 +40,10 @@ for n,d in enumerate(asciis):
     d.table['dmu_l'] = d.table['dmu_l']/np.cos(np.deg2rad(d.table['b']))
     d.save(datadir, asciiname, stringnames[n], set_raw)
 
-# Add all ascii tables to the first ascii table in the list.
-for num, ascii_object in enumerate(asciis):
-    if num != 0:
-        asciis[0].add(ascii_object)
-
-# Save the first ascii table in full: see ascii_info asciiname
-asciis[0].save(datadir, asciiname, fullgroup, fullset)
-
 
 # All this is for conversion stuff.
-"""
 # Set up handler for conversion
-galcent = galcentricutils.galconversion(windows_directories.sourcedir)
+galcent = galcentricutils.galconversion()
 
 # First remove Jorge's conversion from the data, moving back to Galactic
 galcent.solinfo_grab(sourcedir, "solar_info_jorge.dat")
@@ -73,7 +64,7 @@ galcent.GALCENT_to_GAL(windows_directories.datadir,
                        ascii_info.fullset)
 
 # This gives us back the original Galactic data. Next: update Galactocentric using our own conversion (updated values.)
-galcent.solinfo_grab(sourcedir, "solar_info.dat")
+galcent.solinfo_grab(windows_directories.sourcedir, "solar_info.dat")
 galcent.solgal_set()
 # For each original ascii
 groups = ascii_info.all_groups
@@ -82,8 +73,3 @@ for group in groups:
                            ascii_info.asciiname,
                            group,
                            ascii_info.set_raw)
-# For the "full" ascii
-galcent.GAL_to_GALCENT(windows_directories.datadir,
-                       ascii_info.asciiname,
-                       ascii_info.fullgroup,
-                       ascii_info.fullset) """
