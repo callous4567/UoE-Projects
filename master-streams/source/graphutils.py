@@ -4,17 +4,22 @@ import os
 import astropy
 import numpy as np
 from astropy.table import Table, unique, vstack
+
 # Our own stuff.
 import galcentricutils
 import windows_directories
+
 # Matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.ticker as pltick
 import matplotlib.colors as mcolors
+
+
 # Plotly
 import plotly.express as px
 import plotly.io as plio
 plio.renderers.default = 'browser'
+
 # Pandas
 import pandas
 
@@ -82,6 +87,22 @@ class twod_graph(object):
         axs.grid(True, which='major', alpha=1, linewidth=0.25, color="black")  # Enable grids on subplot
         axs.grid(True, which='minor', alpha=1, linewidth=0.25, color="black")
         axs.scatter(phis, thetas, s=0.1, alpha=1, color="black")
+        plt.show()
+
+    # 2D Histogram Plot in (l,b)
+    def lbtwodhist(self, table, nbins):
+        # First get latitude and azimuth
+        table = galcentricutils.angular().get_latipolar(table)
+        phis, thetas = np.deg2rad(table['phi']),np.deg2rad(table['theta'])
+        for num,phi in enumerate(phis):
+            if phi >= np.pi:
+                phis[num] = phi - 2*np.pi
+        fig, axs = plt.subplots(nrows=1, ncols=1, dpi=300)
+        h = axs.hist2d(phis, thetas, bins=[nbins,nbins], cmin=1, cmap = plt.cm.nipy_spectral)
+        plt.colorbar(h[3], label="Bin Count")
+        axs.grid(False)
+        axs.set(xlabel='l',
+                ylabel='b')
         plt.show()
 
     # Regular 2D l,b plot.
@@ -230,7 +251,7 @@ class threed_graph(object):
             pass
 
         table_pandas = table.to_pandas()
-        fig = px.scatter_3d(table_pandas, x='x', y='y', z='z', color='k_index')
+        fig = px.scatter_3d(table_pandas, x='x', y='y', z='z', color='k_index', title=savedex)
         save_loc = windows_directories.imgdir + "\\xmeans_html" + "\\" + savedex
         fig.write_html(save_loc)
         if browser == True:

@@ -3,6 +3,7 @@ asciiname = "stardata.hdf5"
 
 # Group/set of the combined catalogue
 fullgroup, fullset = "full_raw", "astrotable"
+fullpanda = "astroframe"
 
 # Set indices (same asciigroup) for the raw data for each individual ascii file we ripped
 bhb = "BHB_edr3_metal_superclean"
@@ -11,6 +12,7 @@ kgiants = "KGiant_edr3_metal"
 lamostk = "LAMOST_K_FULL_edr3"
 set_raw = "astrotable"
 all_groups = [bhb, gcs, kgiants, lamostk]
+panda_raw = "astroframe"
 
 """ IMPORTANT NOTES
 JORGES PROPER MOTIONS IN L ALREADY HAVE A COSB FACTOR CHRIST ON A STICK

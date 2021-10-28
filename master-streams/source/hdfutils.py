@@ -3,6 +3,7 @@ import h5py
 import nexusformat.nexus as nx
 import astropy
 import numpy as np
+import pandas
 
 # Modified from TGP2020 utils.hdf5_writer. Windows or Unix compatible. Class holds various HDF5 utilities.
 class hdf5_writer(object):
@@ -116,3 +117,14 @@ class hdf5_writer(object):
             data = str(np.array(f[group][dataset]), "ascii")
         os.chdir(self.owd)
         return data
+    # Write a Pandas Dataframe
+    def write_df(self, group, dataset, df):
+        os.chdir(self.directory)
+        df.to_hdf(self.filename, key = group + "/" + dataset, complevel=0, append=False, format="fixed", mode='r+')
+        os.chdir(self.owd)
+    # Read a Pandas DataFrame
+    def read_df(self, group, dataset):
+        os.chdir(self.directory)
+        df = pandas.read_hdf(self.filename, key=group + "/" + dataset)
+        os.chdir(self.owd)
+        return df

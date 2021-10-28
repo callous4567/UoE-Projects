@@ -41,7 +41,9 @@ for n,d in enumerate(asciis):
     d.save(datadir, asciiname, stringnames[n], set_raw)
 
 
-# All this is for conversion stuff.
+# All this is for conversion stuff if necessary. Note that the Galactic Coordinates are unchanged by Jorge.
+# We'll use those as given: no need to convert back Jorge's Galactocentric Coords.
+"""
 # Set up handler for conversion
 galcent = galcentricutils.galconversion()
 
@@ -72,4 +74,4 @@ for group in groups:
     galcent.GAL_to_GALCENT(windows_directories.datadir,
                            ascii_info.asciiname,
                            group,
-                           ascii_info.set_raw)
+                           ascii_info.set_raw) """

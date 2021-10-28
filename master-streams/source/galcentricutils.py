@@ -415,6 +415,7 @@ class angular(object):
 
 
 # Galactocentric system rotations/etc. x-convention. Recalculates angular momentum, too, in the new system.
+# Passive transformation: gives values in the new system, alongside the unit vectors of the new system (in the old.)
 # https://mathworld.wolfram.com/EulerAngles.html Euler Convention (Goldstein 1980)
 # Give angles in degrees.
 class galrotation(object):
@@ -556,19 +557,34 @@ class monte_angular(object):
                 cov[i,j] = np.mean(L_dev[i]*L_dev[j], axis=0)
 
         # Get the standard deviations
-        stdevs = np.zeros(shape=(1,3))
-        for i in range(3):
-            dev_i = math.sqrt(cov[i,i])
-            stdevs[0,i] = dev_i
+        #stdevs = np.zeros(shape=(1,3))
+        #for i in range(3):
+        #    dev_i = math.sqrt(cov[i,i])
+        #    stdevs[0,i] = dev_i
 
         # Calculate the Pearson Coefficients for this matrix (returning them as an array, too.)
-        pears = np.zeros(shape=(3,3))
-        for i in range(3):
-            for j in range(3):
-                if i != j:
-                    pears[i,j] = cov[i,j]/(stdevs[0,i]*stdevs[0,j])
+        #pears = np.zeros(shape=(3,3))
+        #for i in range(3):
+        #    for j in range(3):
+        #        if i != j:
+        #            pears[i,j] = cov[i,j]/(stdevs[0,i]*stdevs[0,j])
 
-        return stdevs, cov, pears
+        return cov
+
+    # Returns a pandas dataframe instead. Same monte as above, except with covariance matrices under ['covtrix']
+    def table_covmonte(self, table, n):
+        table = self.converter.nowrite_GAL_to_GALCENT(table)
+        table = angular().get_momentum(table)
+        covtrices = []
+        for row in table:
+            l, b, dist, dmul, dmub, vlos = row['l'], row['b'], row['dist'], row['dmu_l'], row['dmu_b'], row['vlos']
+            edist, edmul, edmub, evlos = row['edist'], row['edmu_l'], row['edmu_b'], row['evlost']
+            vec = [l, b, dist, dmul, dmub, vlos, edist, edmul, edmub, evlos]
+            covtrix = self.vec_covmonte(vec, n)
+            covtrices.append(covtrix)
+        df = table.to_pandas()
+        df['covtrix'] = covtrices
+        return df
 
 # Great Circle Cell Counts in the Galactocentric System, as defined by 1996 Johnston Paper.
 # Note: Designed to work in Standard Polar, not Latipolar. ALL IN DEGREES!
@@ -586,6 +602,11 @@ class greatcount(object):
         pos = np.array([table['x'], table['y'], table['z']]).T
         radii = np.array([np.linalg.norm(d) for d in pos])
         radcondition = [True if d >= radmin else False for d in radii]
+        # Also grab the number of stars that satisfy the radcondition while we're at it, not just the ones in the GCC.
+        radnumber = 0
+        for d in radcondition:
+            if d == True:
+                radnumber += int(1)
         pos_unit = np.array([pos[d]/radii[d] for d in range(len(pos))])
         # Dot them
         dotted = [np.dot(polar_unit, pos_unit[d]) for d in range(len(pos_unit))]
@@ -596,10 +617,63 @@ class greatcount(object):
             if radcondition[num] == True:
                 if abs(item) <= condition:
                     indices.append(num)
-        # Return the newly-built table
-        return table[indices]
+        #print(theta, phi, len(indices))
+        # Return the newly-built table, alongside the radius conditions number
+        return table[indices], radnumber
 
-    # Generate a hemispheres-worth of equally separated n-points.
+    # Get and split a gcc_table into n_phi zones, i.e. [0, 360/n, 2*360/n,... 360] areas.
+    def gcc_splittable(self, table, theta, phi, dtheta, radmin, n_phi):
+        # Get table (no split)
+        table, radnumber = self.gcc_table(table,theta,phi,dtheta,radmin)
+
+        # Generate coordinate system for the great circle for coordinate decomposition
+        theta, phi = math.radians(theta), math.radians(phi)
+        polar_z = np.array([np.sin(theta) * np.cos(phi),
+                            np.sin(theta) * np.sin(phi),
+                            np.cos(theta)])
+        theta_x, phi_x = theta + (np.pi/2), phi
+        if theta_x > np.pi:
+            theta_x = 2*np.pi - theta_x
+            phi_x += np.pi
+        polar_x = np.array([np.sin(theta_x) * np.cos(phi_x),
+                            np.sin(theta_x) * np.sin(phi_x),
+                            np.cos(theta_x)])
+        polar_y = np.cross(polar_z, polar_x)
+
+        # Get xx yy zz coordinates IN THE GREAT CIRCLE SYSTEM for the table, XX,YY,ZZ!
+        v = np.array([table['x'],
+                      table['y'],
+                      table['z']])
+        polx, poly = np.matmul(polar_x, v), np.matmul(polar_y, v)
+
+        # Get the value of phi (counter-clockwise) to the new x axis.
+        phis = np.arctan2(poly, polx)
+        phis = np.array([d + (2*np.pi) if d < 0 else d for d in phis])
+
+        # Get full/half-width of each phi zone
+        fw = 2*np.pi/(n_phi)
+
+        # Set up the regions for splitting the phi's up
+        phi_regions = fw*np.arange(0, n_phi+1, 1) # ex: nphi = 3, [0, 1, 2, 3], 3 areas: 0->1, 1->2, 2->3.
+        phi_regions_indices = [[] for d in range(n_phi)]
+
+        # Get the region that each phi belongs to and save it to an index of indices!
+        for num, phi in enumerate(phis):
+            for region_index in range(n_phi):
+                if phi_regions[region_index] <= phi < phi_regions[region_index + 1]:
+                    phi_regions_indices[region_index].append(num)
+
+        # Clip the gcc_table into all the individual subsections
+        subtables = [table[indices] for indices in phi_regions_indices]
+
+        # Return the subtables
+        return subtables, radnumber
+
+
+
+
+
+    # Generate a hemispheres-worth of equally separated n-points. RETURNS IN RADIANS.
     # A simple scheme for generating nearly uniform distribution of antipodally
     # symmetric points on the unit sphere
     # Cheng Guan Koay∗
@@ -659,7 +733,7 @@ class greatcount(object):
         return thetas_orig, phis_orig, indices
 
     # Take the half grid and produce a southern hemisphere too, just a 180 degree reflection of the top.
-    # Make sure K_full is EVEN.
+    # Make sure K_full is EVEN. Returns are in RADIANS.
     def fullgridgen(self, K_full):
         # Get half-hemispheres worth of points
         thetas_orig, phis_orig, indices = self.halfgridgen(np.rint(K_full/2, out=np.zeros(1, int), casting='unsafe')[0])
@@ -680,6 +754,47 @@ class greatcount(object):
         thetas,phis = np.array(newthetaphis).T
         thetas,phis = np.append(thetas_orig, thetas), np.append(phis_orig, phis)
         indices = np.append(np.array(indices),np.array(new_indices))
+        return thetas, phis, indices
+
+    # Within an angular distance (degrees) select K_partial points from theta,phi
+    """
+    Generate a fullgrid with the correct number of points: 
+    - first get point density for the partial grid by getting its K_partial/solid-angle
+    - get total number for the entire 4pi-steradian-sphere and use to generate full-grid
+    Dot each point in the fullgrid with the vector for this "partial pole" and expect abs(costheta) <= cosdtheta
+    """
+    def partialgen(self, K_partial, dtheta, theta, phi):
+        # Get in radians.
+        dtheta, theta, phi = math.radians(dtheta), math.radians(theta), math.radians(phi)
+
+        # Get the fullgrid with the correct number required
+        solidangle = 2*np.pi*(1 - math.cos(dtheta))
+        sadensity = K_partial/solidangle
+        K_full = 4*np.pi*sadensity
+        K_full = np.rint(K_full, out=np.zeros(1, int), casting='unsafe')[0]
+        if (K_full % 2) != 0:
+            K_full += 1
+        fullgrid = self.fullgridgen(K_full)
+
+        # Dot and select the coordinates satisfying lying within dtheta of our point.
+        unit = np.array([math.sin(theta) * math.cos(phi),
+                         math.sin(theta) * math.sin(phi),
+                         math.cos(theta)])
+        thetaphiindices = list(zip(fullgrid[0], fullgrid[1], fullgrid[2]))
+        acceptphetaphiindices = []
+        # The dot-product lim
+        lim = math.cos(dtheta)
+        for dex in thetaphiindices:
+            thetaa, phii, indexx = dex
+            index_unit = np.array([math.sin(thetaa) * math.cos(phii),
+                                   math.sin(thetaa) * math.sin(phii),
+                                   math.cos(thetaa)])
+            dotted = abs(np.dot(unit, index_unit))
+            if dotted >= lim:
+                acceptphetaphiindices.append(np.array(dex))
+
+        # Get back the list format and return the list
+        thetas, phis, indices = np.array(acceptphetaphiindices).T
         return thetas, phis, indices
 
 
