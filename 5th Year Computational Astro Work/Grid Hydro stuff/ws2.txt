@@ -1,0 +1,28 @@
+The aim of Practice Workshop 2:
+
+continue and finish
+(b) to reproduce Figure 2.2, p.47. Compare and analyse how the three approximations of
+part (a), when applied to a simple ordinary differential equation, yield
+different accuracies of the solution. Hint: rewrite the implicit schemes to
+avoid having to solve a set of linear equations. 
+
+Note typo: Eq.(2.28) shows that epsilon is calculated from u-w, so the
+relative error shown in Fig.2.2 should be epsilon/w, not epsilon/u.
+
+(c) to programme scheme (2.57), to reproduce Figure 2.10 (p.63), and
+to investigate, compare and analyse the numerical viscosity of that scheme. 
+
+Where appropriate use an even number of grid points for the spatial
+zoning. Staggered grids are not necessary.
+
+-----------
+
+Please produce a self-contained report document, including explanatory
+text with embedded or appended figures, as pdf file.  
+
+Submit all your work (codes, plots, text) electronically in Learn, on
+the page "Lecture Notes / Grid-Based Hydrodynamics". 
+
+---------------------------------------------------------------------
+
+Max Ruffert, m.ruffert@ed.ac.uk

@@ -1,0 +1,44 @@
+The aim of Practice Workshop 1:
+
+(a), to reproduce Table 2.1, p.45. Compare and analyse how three difference
+approximations to the first derivative yield different accuracies and
+orders of convergence.  
+
+All Tables and Figures refer to the book Numerical Methods in
+Astrophysics, by P.Bodenheimer et al. The plots and table need not
+have the identical layout as the plots in the book, but the content
+should be equivalent.  
+
+-----------------------
+
+Use a combination of 
+(1) a programming language of your choice for the numerical calculations,  
+(2) a plotting package or graphics commands within a language to produce the plots and 
+(3) typesetting or editing software to give an explanation in text form of your working.   
+
+Examples for
+(1) C, fortran, matlab, maple, idl, java, python
+(2) matlab, maple, idl, gnuplot
+(3) TeX, word, Maple, emacs
+
+Please produce a self-contained report document, including explanatory
+text with embedded or appended figures, as pdf file.  
+
+Submit all your work (codes, plots, text) electronically in Learn, on
+the page "Lecture Notes / Grid-Based Hydrodynamics". 
+
+-------------------------------------------------------------------
+
+If time, try
+
+(b) to reproduce Figure 2.2, p.47. Compare and analyse how the three
+approximations of part (a), when applied to a simple ordinary differential
+equation, yield different accuracies of the solution. Hint: rewrite
+the implicit schemes to avoid having to solve a set of linear equations.  
+
+Note typo: Eq.(2.28) shows that epsilon is calculated from u-w, so the
+relative error shown in Fig.2.2 should be epsilon/w, not epsilon/u.
+
+-------------------------------------------------------------------
+
+Max Ruffert, m.ruffert@ed.ac.uk
