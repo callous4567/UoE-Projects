@@ -1,16 +1,17 @@
+import pickle
 import time
-
 import astropy
+import pandas
 import scipy
+import munkres
 from astropy.stats import sigma_clipped_stats
 from astropy.table import Table
-from numba import jit
 from numpy.random import bit_generator
-from scipy.stats import norm
-from sklearn.mixture import GaussianMixture, BayesianGaussianMixture
-from sklearn.preprocessing import normalize
+from sklearn.metrics.cluster import contingency_matrix
 from sympy import *
 import math
+
+import ascii_info
 import graphutils
 import hdfutils
 import os
@@ -19,13 +20,12 @@ from numpy import random
 import astropy.coordinates as coord
 from astropy.coordinates import galactocentric_frame_defaults
 import astropy.units as u
-import matplotlib.pyplot as plt
-from sklearn.cluster import KMeans, dbscan, DBSCAN, AgglomerativeClustering, OPTICS, AffinityPropagation
-import windows_directories
-from astrowrapper import utils
-import plotly.express as px
 import plotly.io as plio
 import hdbscan
+from scipy.spatial import ConvexHull
+
+import windows_directories
+from hdbscan import flat
 plio.renderers.default = "browser"
 # SOME NOTES
 """
@@ -34,6 +34,11 @@ plio.renderers.default = "browser"
 - Galactic Frame is right handed, too. X to the centre, Y to the left, Z upwards to NGP. 
 - Work in Galactic or Galactocentric- SCREW ICRS APPARENTLY. 
 """
+
+# TODO: 2D clustering like Sofie Groningen Paper (see for final method comparison.)
+
+# TODO: Note that we're trying to make sure code is oriented to work with both pandas and astropy tables.
+# TODO: Table Covmonte needs numpy multivariate normal generation instead (faster than generating each set individually)
 
 # Convert from ICRS to Galactocentric and back with custom solar system parameters (set via .dat file of right format.)
 class galconversion(object):
@@ -333,9 +338,9 @@ class angular(object):
         x = xyz[0]
         y = xyz[1]
         z = xyz[2]
-        r = sqrt(x * x + y * y + z * z)
-        theta = acos(z / r) * 180 / pi  # to degrees
-        phi = atan2(y, x) * 180 / pi
+        r = math.sqrt(x * x + y * y + z * z)
+        theta = math.acos(z / r) * 180 / np.pi  # to degrees
+        phi = math.atan2(y, x) * 180 / np.pi
         return [r, theta, phi]
 
     # Grab angular momenta for table and save to/return table. Saves magnitude of angular momentum vectors, too.
@@ -412,8 +417,6 @@ class angular(object):
     def vec_get_radii(self, vec):
         return np.linalg.norm(vec[0:3])
 
-
-
 # Galactocentric system rotations/etc. x-convention. Recalculates angular momentum, too, in the new system.
 # Passive transformation: gives values in the new system, alongside the unit vectors of the new system (in the old.)
 # https://mathworld.wolfram.com/EulerAngles.html Euler Convention (Goldstein 1980)
@@ -466,8 +469,6 @@ class galrotation(object):
         unitz = np.matmul(np.array([0,0,1]),rotrix)
         return np.array([unitx, unity, unitz])
 
-
-
 # Monte-Carlo Sampling of Angular Momentum Errors. Includes per-value and table-wide sampling. Tidbits...
 """
 [l,b,distance,dmul,dmub,vlos,edist,edmul,edmub,evlos]
@@ -506,7 +507,7 @@ class monte_angular(object):
             means.append(mean), stds.append(sigma)
 
         return np.append(means, stds)
-    # Given an astrotable, monte-carlo the entire darned thing for step n.
+    # Given an astrotable, monte-carlo the entire darned thing for step n with the same vector as above.
     def table_monte(self, table, n):
         table = self.converter.nowrite_GAL_to_GALCENT(table)
         table = angular().get_momentum(table)
@@ -519,9 +520,7 @@ class monte_angular(object):
             dLx.append(monte[3]),dLy.append(monte[4]),dLz.append(monte[5])
         table['dLx'],table['dLy'],table['dLz'] = dLx,dLy,dLz
         return table
-
     # Same as above, but returns Covariance Matrix.
-    # [l,b,distance,dmul,dmub,vlos,edist,edmul,edmub,evlos] vector.
     def vec_covmonte(self, vec, n):
         # Get the angular momentum for this vector (judged as the "mean")
         vec_galcent = self.converter.vec_GAL_to_GALCENT(*vec[0:6])
@@ -544,7 +543,7 @@ class monte_angular(object):
         astrotable = self.converter.nowrite_GAL_to_GALCENT(astrotable)
         astrotable = angular().get_momentum(astrotable)
 
-        # Generate the Covariance Matrix
+        # Generate the deviations for each Monte'd point
         Lx,Ly,Lz = astrotable['Lx'],astrotable['Ly'],astrotable['Lz']
         L = np.array([Lx, Ly, Lz]).T
         L_dev = L - vec_L # difference from mean, vector representation
@@ -557,10 +556,10 @@ class monte_angular(object):
                 cov[i,j] = np.mean(L_dev[i]*L_dev[j], axis=0)
 
         # Get the standard deviations
-        #stdevs = np.zeros(shape=(1,3))
-        #for i in range(3):
-        #    dev_i = math.sqrt(cov[i,i])
-        #    stdevs[0,i] = dev_i
+        stdevs = []
+        for i in range(3):
+            dev_i = math.sqrt(cov[i,i])
+            stdevs.append(dev_i)
 
         # Calculate the Pearson Coefficients for this matrix (returning them as an array, too.)
         #pears = np.zeros(shape=(3,3))
@@ -569,29 +568,55 @@ class monte_angular(object):
         #        if i != j:
         #            pears[i,j] = cov[i,j]/(stdevs[0,i]*stdevs[0,j])
 
-        return cov
-
-    # Returns a pandas dataframe instead. Same monte as above, except with covariance matrices under ['covtrix']
+        return cov, stdevs, vec_L
+    # Returns a pandas dataframe instead: useful to avoid write conflicts. Cleanup after.
+    # Same monte as above, except with covariance matrices under ['covtrix'] too.
     def table_covmonte(self, table, n):
         table = self.converter.nowrite_GAL_to_GALCENT(table)
         table = angular().get_momentum(table)
-        covtrices = []
+        covtrices, stdevslist = [], []
+        mean_angulars = []
         for row in table:
             l, b, dist, dmul, dmub, vlos = row['l'], row['b'], row['dist'], row['dmu_l'], row['dmu_b'], row['vlos']
             edist, edmul, edmub, evlos = row['edist'], row['edmu_l'], row['edmu_b'], row['evlost']
             vec = [l, b, dist, dmul, dmub, vlos, edist, edmul, edmub, evlos]
-            covtrix = self.vec_covmonte(vec, n)
-            covtrices.append(covtrix)
+            covtrix, stdevs, vec_L = self.vec_covmonte(vec, n)
+            covtrices.append(covtrix), stdevslist.append(stdevs)
+            mean_angulars.append(vec_L)
+
         df = table.to_pandas()
+        df['vec_L'] = mean_angulars
         df['covtrix'] = covtrices
+        df['dLx'], df['dLy'], df['dLz'] = np.array(stdevslist).T
+
         return df
+    # Given table with n rows, will generate m multivariate-normal distributed momentum vectors for each row in table.
+    # Will return a pandas, with n rows, and m columns: each column is one unique set of momentum vectors.
+    # TODO: If you go down and do 2D analysis, you will need to scatter in energy space, too. Hence position.
+    def panda_duplimonte(self, table, m):
+        covtrices = table['covtrix']
+        L_vectors = table['vec_L']
+        list_of_rows = []
+        # Generate L components for each row.
+        for num,L_vector,covtrix in zip(range(len(covtrices)),L_vectors,covtrices):
+            L_generated = random.default_rng().multivariate_normal(mean=L_vector, cov=covtrix, size=m)
+            list_of_rows.append(list(L_generated))
+
+        list_of_columns = list(map(list, zip(*list_of_rows)))
+        return list_of_columns
 
 # Great Circle Cell Counts in the Galactocentric System, as defined by 1996 Johnston Paper.
 # Note: Designed to work in Standard Polar, not Latipolar. ALL IN DEGREES!
+"""
+
+"""
 class greatcount(object):
     def __init__(self):
         self.null = "null"
 
+    """
+    Sagittarius within 273,-13 degrees, maybe 1 degree off (thus 103,273 in theta/phi) 
+    """
     # Given a table, theta, phi, delta-theta, grab all members within this cell from table, produce new table.
     # NOTE: Poor Performance. If running optimization, switch to arrays and indices. Rebuild table post-calculation.
     def gcc_table(self, table, theta, phi, dtheta, radmin):
@@ -620,6 +645,33 @@ class greatcount(object):
         #print(theta, phi, len(indices))
         # Return the newly-built table, alongside the radius conditions number
         return table[indices], radnumber
+
+    # ^ but returns only the indices, no fancier computation.
+    def gcc_table_indices(self, table, theta, phi, dtheta, radmin):
+        # Set up unit vector for GCC
+        theta, phi, dtheta = math.radians(theta), math.radians(phi), math.radians(dtheta)
+        polar_unit = np.array([np.sin(theta) * np.cos(phi), np.sin(theta) * np.sin(phi), np.cos(theta)])
+        # Get unit vectors for all the targets
+        pos = np.array([table['x'], table['y'], table['z']]).T
+        radii = np.array([np.linalg.norm(d) for d in pos])
+        radcondition = [True if d >= radmin else False for d in radii]
+        # Also grab the number of stars that satisfy the radcondition while we're at it, not just the ones in the GCC.
+        radnumber = 0
+        for d in radcondition:
+            if d == True:
+                radnumber += int(1)
+        pos_unit = np.array([pos[d] / radii[d] for d in range(len(pos))])
+        # Dot them
+        dotted = [np.dot(polar_unit, pos_unit[d]) for d in range(len(pos_unit))]
+        condition = np.sin(dtheta)
+        indices = []
+        # Check for conditions and build new table.
+        for num, item in enumerate(dotted):
+            if radcondition[num] == True:
+                if abs(item) <= condition:
+                    indices.append(num)
+        # print(theta, phi, len(indices))
+        return indices
 
     # Get and split a gcc_table into n_phi zones, i.e. [0, 360/n, 2*360/n,... 360] areas.
     def gcc_splittable(self, table, theta, phi, dtheta, radmin, n_phi):
@@ -668,10 +720,6 @@ class greatcount(object):
 
         # Return the subtables
         return subtables, radnumber
-
-
-
-
 
     # Generate a hemispheres-worth of equally separated n-points. RETURNS IN RADIANS.
     # A simple scheme for generating nearly uniform distribution of antipodally
@@ -797,12 +845,42 @@ class greatcount(object):
         thetas, phis, indices = np.array(acceptphetaphiindices).T
         return thetas, phis, indices
 
+    # Generate a set of theta, phi (in galcentricpolar) for a given GCC for scatterplot
+    def gcc_gen(self, n_points, theta, phi):
+        # Generate coordinate system for the great circle for coordinate decomposition
+        theta, phi = math.radians(theta), math.radians(phi)
+        polar_z = np.array([np.sin(theta) * np.cos(phi),
+                            np.sin(theta) * np.sin(phi),
+                            np.cos(theta)])
+        theta_x, phi_x = theta + (np.pi/2), phi
+        if theta_x > np.pi:
+            theta_x = 2*np.pi - theta_x
+            phi_x += np.pi
+        polar_x = np.array([np.sin(theta_x) * np.cos(phi_x),
+                            np.sin(theta_x) * np.sin(phi_x),
+                            np.cos(theta_x)])
+        polar_y = np.cross(polar_z, polar_x)
 
+        # Set up range of phi (within the GCC coordinate frame)
+        phirange = np.linspace(0, 2*np.pi, n_points)
 
-# Clustering
-class cluster(object):
+        # Set up all the vectors for the periphery of the GCC (unit vectors.)
+        gcc_univects = np.array([polar_x*math.cos(d) + polar_y*math.sin(d) for d in phirange])
+
+        # Get theta and phi for gcc_univects in the non-GCC frame
+        # polar_pos = np.array([radius, theta, phi])
+        polars = np.array([angular().vec_polar(d) for d in gcc_univects]).T
+        thetas, phis = polars[1],polars[2]
+
+        return thetas, phis
+
+# Carry out a clustering (HDBSCAN-oriented)
+class cluster3d(object):
     def __init__(self):
         self.null = "null"
+        self.bounds = np.array([[-8e3, 6e3],
+                               [-10e3, 10e3],
+                               [-7e3, 7e3]])
 
     # Remove outlying L-values (units of sigma). Assumes r has already been cleaned out (see: gcc_table)
     def clean(self, table, sig_tolerance):
@@ -821,114 +899,188 @@ class cluster(object):
                     break
         return table_cleaned
 
+    # Return probabilistic selection for bounding box as True or False (a generator object.) Replaces clean.
+    # Returns [True, False, True...]: do data[getCuboid(data)] for the cube clip you need. Useful for preprocess.
+    def getCuboid(self,L_data):
+        coords = L_data
+        box_limits = self.bounds
+        # Get probs: 1 or 0.
+        return (coords[:, 0] > box_limits[0, 0]) & (coords[:, 0] < box_limits[0, 1]) \
+               & (coords[:, 1] > box_limits[1, 0]) & (coords[:, 1] < box_limits[1, 1]) \
+               & (coords[:, 2] > box_limits[2, 0]) & (coords[:, 2] < box_limits[2, 1])
 
-    # kmeans-cluster the given table: returns the inertia of the table, too.
-    def kmeans(self, table, k, savedex, browser):
-        # Set up vectors/positions/etc
-        table = self.clean(table, 5)
-        L = np.array([table['Lx'], table['Ly'], table['Lz']]).T
-        km = KMeans(n_clusters=k,n_init=10,max_iter=300,algorithm="full")
-        kmfit = km.fit_predict(L) # list with indices for cluster
-        inertia = km.inertia_
-        table['k_index'] = np.array(kmfit)
-        graphutils.threed_graph().kmeans_L(table, savedex + ".html", browser)
-        return table, inertia
+    # Hierarchical DBS on an array of L-Vectors [1,2,...] provided [minclustsize,minsamples]
+    # Assumes data already preprocessed (see: getCuboid.)
+    def listhdbs(self, array, minpar):
+        # Flat-clustering example (select n_clusters instead.)
+        #clusterer = flat.HDBSCAN_flat(min_cluster_size=minpar[0],
+        #                              min_samples=minpar[1],
+        #                              metric='l2',
+        #                              algorithm='best',prediction_data=True,n_clusters=10,X=array)
+        #clustered = flat.approximate_predict_flat(clusterer, array, 10)
+        # return np.array(clustered[0])
+        hdbs = hdbscan.HDBSCAN(min_cluster_size=minpar[0],
+                               min_samples=minpar[1],
+                               metric='l2',
+                               algorithm='best')
+        hdbsfit = hdbs.fit_predict(array)
+        return np.array(hdbsfit)
 
-    # DBSCAN. params are "eps" and "min_samples." Browser=True opens in browser (append to others.)
-    def dbs(self, table, eps, min_samples, browser):
-        table = self.clean(table, 5)
-        L = np.array([table['Lx'], table['Ly'], table['Lz']]).T
-        dbs = DBSCAN(eps=eps, min_samples=min_samples, metric="l1", leaf_size=5)
-        dbsfit = dbs.fit_predict(L)
-        table['k_index'] = np.array(dbsfit)
-        save_format = ("DBS_TEST_EPS{0}_MINSAMP{1}" + ".html").format(eps, min_samples)
-        graphutils.threed_graph().kmeans_L(table, save_format, browser)
-        return table, dbs
-
-    # Hierarchical DBS
+    """
+    # Hierarchical DBS: returns memberships. Astropy Tables.
+    # Deprecated basically (designed for kmeans_L/xmeans_L graph)
+    # Keeping it around in case it needs to be revived for use. 
     def hdbs(self, table, browser):
         table = self.clean(table, 5)
         L = np.array([table['Lx'], table['Ly'], table['Lz']]).T
-        hdbs = hdbscan.HDBSCAN(min_cluster_size=25,
-                               min_samples=15,
-                               metric="l2")
+        hdbs = hdbscan.HDBSCAN(min_cluster_size=int(len(table)**(1/3)),
+                               min_samples=int(len(table)**(1/4)),
+                               metric='l2',
+                               algorithm='best')
         hdbsfit = hdbs.fit_predict(L)
         table['k_index'] = np.array(hdbsfit)
         #save_format = ("HDBS_TEST_EPS{0}_MINSAMP{1}" + ".html").format(eps, min_samples)
         graphutils.threed_graph().kmeans_L(table, "test_hdbs.html", browser)
-        graphutils.threed_graph().xmeans_L(table, "test_hdbs.html", browser)
+        #graphutils.threed_graph().xmeans_L(table, "test_hdbs.html", browser)
         return table
+    """
 
-    # OPTICS
-    def optics(self, table):
-        table = self.clean(table, 5)
-        L = np.array([table['Lx'], table['Ly'], table['Lz']]).T
-        optics = OPTICS(metric="l1", min_cluster_size=20, leaf_size=20, eps=1e4, max_eps=1e6)
-        opticsfit = optics.fit_predict(L)
-        table['k_index'] = np.array(opticsfit)
-        graphutils.threed_graph().kmeans_L(table, "test_plot", False)
-        return table
+# Create random 3D multivariates for cluster testing, bounded by cluster3d() bounding cuboid, reliant on normal dists.
+class genclust3d(object):
+    def __init__(self):
+        self.null = "null"
+        self.rng = np.random.default_rng() #[[minx,miny,minz],[max...]]
 
-    # Agglomerative
-    def aglom(self, table, k):
-        table = self.clean(table,5)
-        L = np.array([table['Lx'], table['Ly'], table['Lz']]).T
-        aglom = AgglomerativeClustering(n_clusters=k, linkage='ward')
-        aglomfit = aglom.fit_predict(L)
-        table['k_index'] = np.array(aglomfit)
-        graphutils.threed_graph().kmeans_L(table, "test_plot", False)
-        return table
+    # Randomly generate (n) mu vectors/symmetric covariance matrices in 3 dimensions.
+    """
+    All elements generated using uniform distributions with maxmin of covbounds=sigma for standard deviation/covtrix.
+    Optionally specify covscale on a per-cluster basis as a list [cs1, cs2, cs3...]
+    mubounds describes points spatially of mu: just like with cluster3d() bounding box: centroids in here
+    [[x0,x1],
+     [y0,y1],
+     [z0,z1]]
+    """
+    def gen_mucov(self, n, covscale, mubounds):
+        # Get mu's
+        mus = self.rng.integers(low=mubounds[0],high=mubounds[1],size=(n,1,3))
+        mus = [d[0] for d in mus]
+        mus = np.array(mus)
 
-    # Affinity Propagation
-    def afprop(self, table):
-        table = self.clean(table, 5)
-        L = np.array([table['Lx'], table['Ly'], table['Lz']]).T
-        afprop = AffinityPropagation(damping=0.5)
-        afpropfit = afprop.fit_predict(L)
-        table['k_index'] = np.array(afpropfit)
-        graphutils.threed_graph().kmeans_L(table, False, True)
-        return table
+        # Get cov's
+        covtrices = []
+        for m in range(n):
+            scale = covscale
+            if type(covscale) == list:
+                scale = covscale[m]
+            # Create and populate diagonals randomly
+            cov_diag = self.rng.uniform(low=-1*scale,high=scale, size=3)
+            diagtrix = np.zeros(shape=(3,3))
+            for i in range(3):
+                diagtrix[i,i] = cov_diag[i]*cov_diag[i]
+            # Now create/populate off-diagonals.
+            offdiagtrix = np.zeros(shape=(3,3))
+            for i in range(1,3):
+                for j in range(0,2):
+                    if i != j:
+                        randi, randj = self.rng.uniform(low=-1*scale,high=scale, size=2)
+                        offdiagtrix[i,j] = randi*randj
+                        offdiagtrix[j,i] = randi*randj
+            # Full covariance matrix
+            covtrix = diagtrix + offdiagtrix
+            covtrices.append(covtrix)
+        covtrices=np.array(covtrices)
+        # Return
+        return mus, covtrices
 
-    # Gaussian Mixture with Variational Bayes
-    def bayesgaussmix(self, table, k, savedex, browser):
-        # Set up vectors/positions/etc
-        table = self.clean(table, 4)
-        L = np.array([table['Lx'], table['Ly'], table['Lz']]).T
-        gm = BayesianGaussianMixture(n_components=k)
-        gmfit = gm.fit_predict(L) # list with indices for cluster
-        table['k_index'] = np.array(gmfit)
-        graphutils.threed_graph().kmeans_L(table, savedex + ".html", browser)
-        return table
+    # Visualize the clusters we have created, with N (static)-points per cluster for a convex hull about data.
+    def mucov_visualize(self, mucovs,N):
+        graphutils.threed_graph().kmeans_L_multinormal_generated(mucovs,N)
 
-    # Gaussian Mixture - Euclidean
-    def gaussmix(self, table, k, savedex, browser, graph):
-        # Set up vectors/positions/etc
-        table = self.clean(table, 5)
-        L = np.array([table['Lx'], table['Ly'], table['Lz']]).T
-        gm = GaussianMixture(n_components=k)
-        gmfit = gm.fit_predict(L) # list with indices for cluster
-        table['k_index'] = np.array(gmfit)
-        if graph == True:
-            graphutils.threed_graph().kmeans_L(table, savedex + ".html", browser)
-        bic, aic = gm.bic(L), gm.aic(L)
-        return table, bic, aic
+    # Generate data using gen_mucov mu/cov
+    """
+    with n_points a list/tuple for specificity to each cluster.
+    covscale is a static value for normal noise to all datapoints/creating per-point covariance matrices
+    (points are more likely to have smaller than larger noise, though heavily noised points exist.)
+    Set "individual=True" to return list individual data arrays. 
+    """
+    def noisy_data(self, mucov, n_points, noisescale, individual=False):
+        # Define list placeholders, etc
+        mus, covtrices = mucov
+        pointslist = []
+        covslist = []
 
-    # Grab aics/bics for varioues values of (k) for table.
-    def gaussaicsbics(self, table, k_max, savedex):
-        y = np.arange(1, k_max, 1)
-        bics, aics = [], []
-        for i in y:
-            gmeansdone = self.gaussmix(table, i, "test", browser=False, graph=False)
-            bics.append(gmeansdone[1]), aics.append(gmeansdone[2])
-        plt.plot(y, bics, color="red", label="bics")
-        plt.plot(y, aics, color="green", label="aics")
-        plt.legend()
-        try:
-            os.mkdir(windows_directories.imgdir + "\\gauss_aics_bics_test")
-        except:
-            pass
+        # Set up data for each mu/covtrix (we're not trying to be fancy here- just somewhat dirty.
+        for num, mu, cov, npoint in zip(range(len(mus)),mus,covtrices,n_points):
+            points = self.rng.multivariate_normal(mean=mu,cov=cov,size=npoint)
+            covs = []
+            for m in range(npoint):
+                # Create and populate diagonals randomly
+                cov_diag = self.rng.normal(loc=0, scale=noisescale, size=3)
+                diagtrix = np.zeros(shape=(3, 3))
+                for i in range(3):
+                    diagtrix[i, i] = cov_diag[i] * cov_diag[i]
+                # Now create/populate off-diagonals.
+                offdiagtrix = np.zeros(shape=(3, 3))
+                for i in range(1, 3):
+                    for j in range(0, 2):
+                        if i != j:
+                            randi, randj = self.rng.normal(loc=0, scale=noisescale, size=2)
+                            offdiagtrix[i, j] = randi * randj
+                            offdiagtrix[j, i] = randi * randj
+                # Full covariance matrix
+                covtrix = diagtrix + offdiagtrix
+                covs.append(covtrix)
+            pointslist.append(points)
+            covslist.append(covs)
 
-        plt.savefig(windows_directories.imgdir + "\\gauss_aics_bics_test\\" + savedex + ".png")
-        plt.clf()
-        plt.close()
+        # Decide returns
+        if individual == False:
+            return np.concatenate(pointslist), np.concatenate(covslist)
+        else:
+            return pointslist, covslist
+
+# Comparison Metrics for Clusters, specific to our data structure.
+class compclust(object):
+    def __init__(self):
+        null = "null"
+
+    # Get number of clusts (including outlier clustering, -1)
+    def nclust_get(self, clust):
+        return np.max(clust) + 2
+
+    # For a group, get the entirety of the set and get the number of clusters per clustering
+    def graph_nclust(self, group):
+        # Load in the lists as a list of lists!
+        arrays = [windows_directories.duplimontedir + "\\" + group + "\\" + d + ".cluster.txt" \
+                  for d in ascii_info.duplimonte_saveids]
+        # Load in the arrays
+        for num, array in enumerate(arrays):
+            with open(array, 'rb') as f:
+                arrays[num] = pickle.load(f)
+        # Get the num
+        arrays = [self.nclust_get(d) for d in arrays]
+        # Pass this to graphutils plotting to generate a plot
+        graphutils.twod_graph().nclust_n(arrays, group)
+
+    # Given two clusterings (clust1,clust2), map clust2 onto clust1.
+    # TODO: Change this to work confusion matrices instead (contingency matrix.)
+    """
+    Thank Pallie/Aaron!
+    https://stackoverflow.com/questions/55258457/
+    find-mapping-that-translates-one-list-of-clusters-
+    to-another-in-python
+    """
+    def compclust(self, clust1, clust2):
+        contMatrix = contingency_matrix(clust1, clust2)
+        labelMatcher = munkres.Munkres()
+        labelTranlater = labelMatcher.compute(contMatrix.max() - contMatrix)
+
+        uniqueLabels1 = list(set(clust1))
+        uniqueLabels2 = list(set(clust2))
+
+        tranlatorDict = {}
+        for thisPair in labelTranlater:
+            tranlatorDict[uniqueLabels2[thisPair[1]]] = uniqueLabels1[thisPair[0]]
+
+        return [tranlatorDict[label] for label in clust2]
 

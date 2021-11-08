@@ -7,6 +7,7 @@ import os
 
 import galcentricutils
 import windows_directories
+import windows_stack
 from windows_directories import datadir, asciidir, sourcedir
 from ascii_info import asciiname, fullgroup, fullset, set_raw
 
@@ -38,40 +39,21 @@ stringnames = [d.replace(".txt","") for d in ascii_list]
 for n,d in enumerate(asciis):
     d.astrotabify()
     d.table['dmu_l'] = d.table['dmu_l']/np.cos(np.deg2rad(d.table['b']))
+
+    # Set up handler for conversion (using our coordinates)
+    galcent = galcentricutils.galconversion()
+
+    # Get galcentric transformation
+    galcent.solinfo_grab(sourcedir, "solar_info.dat")
+    galcent.solgal_set()
+
+    # Convert to Galcentric and Get Momenta
+    d.table = galcent.nowrite_GAL_to_GALCENT(d.table)
+    d.table = galcentricutils.angular().get_momentum(d.table)
+
+    # Save Tables
+    print(datadir, asciiname, stringnames[n], set_raw)
     d.save(datadir, asciiname, stringnames[n], set_raw)
 
-
-# All this is for conversion stuff if necessary. Note that the Galactic Coordinates are unchanged by Jorge.
-# We'll use those as given: no need to convert back Jorge's Galactocentric Coords.
-"""
-# Set up handler for conversion
-galcent = galcentricutils.galconversion()
-
-# First remove Jorge's conversion from the data, moving back to Galactic
-galcent.solinfo_grab(sourcedir, "solar_info_jorge.dat")
-galcent.solgal_set()
-
-# For each original ascii
-groups = ascii_info.all_groups
-for group in groups:
-    galcent.GALCENT_to_GAL(windows_directories.datadir,
-                           ascii_info.asciiname,
-                           group,
-                           ascii_info.set_raw)
-
-# For the "full" ascii
-galcent.GALCENT_to_GAL(windows_directories.datadir,
-                       ascii_info.asciiname,
-                       ascii_info.fullgroup,
-                       ascii_info.fullset)
-
-# This gives us back the original Galactic data. Next: update Galactocentric using our own conversion (updated values.)
-galcent.solinfo_grab(windows_directories.sourcedir, "solar_info.dat")
-galcent.solgal_set()
-# For each original ascii
-groups = ascii_info.all_groups
-for group in groups:
-    galcent.GAL_to_GALCENT(windows_directories.datadir,
-                           ascii_info.asciiname,
-                           group,
-                           ascii_info.set_raw) """
+# Stack all tables
+windows_stack.stacking().tables()

@@ -2,8 +2,9 @@ import time
 
 import numpy as np
 import scipy
-from astropy.table import vstack
-
+from astropy.table import vstack, Table
+from numpy import argmin
+import pickle
 import ascii_info
 import galcentricutils
 import graphutils
@@ -37,11 +38,12 @@ def do_monte_table(groupset):
             time.sleep(5)
             continue
 # do_monte but with covariance matrices: note that we're now dealing with PANDAS DATAFRAMES and NOT ASTORPY TABLES
-def do_covmonte_table(groupsetset):
-    group,set,saveset = groupsetset
+def do_covmonte_table(groupsetsaveset):
+    #print("Covmontecarloing' ", groupsetsaveset)
+    group,astropyset,pandaset = groupsetsaveset
     # Grab table
     writer = hdfutils.hdf5_writer(windows_directories.datadir, ascii_info.asciiname)
-    table = writer.read_table(group, set)
+    table = writer.read_table(group, astropyset)
     # Set up Monte
     sourcedir = windows_directories.sourcedir
     monte = galcentricutils.monte_angular()
@@ -51,12 +53,32 @@ def do_covmonte_table(groupsetset):
     # Save the table: watch out for if file is already being written to (retry if it fails.)
     while True:
         try:
-            writer.write_df(group, saveset, df)
+            print("writing")
+            writer.write_df(group, pandaset, df)
             break
         except:
-            print("Write Conflict. Sleeping")
-            time.sleep(5)
+            print("Write Conflict Pandas. Sleeping", groupsetsaveset)
+            time.sleep(np.random.randint(0,5))
             continue
+
+    return "done"
+
+    # Done
+    #print("Done with ", groupsetsaveset)
+# duplimonte for each of our tables. Dumps all pickled results inside subdirectors datadir/duplimonte/group.
+# use pickle.load to load the file.
+def do_duplimonte_table(groupsetm):
+    print(groupsetm)
+    group, set, m = groupsetm
+    writer = hdfutils.hdf5_writer(windows_directories.datadir, ascii_info.asciiname)
+    df = writer.read_df(group, set)
+    list_of_columns = galcentricutils.monte_angular().panda_duplimonte(df, m)
+    # Generate sets for list_of_tables
+    indices = [("L_{}.txt").format(d) for d in [str(d) for d in range(m)]]
+    # Pickle and dump all the tables to file
+    for column, savedex in zip(list_of_columns, indices):
+        with open(windows_directories.duplimontedir + "\\" + group + "\\" + savedex, 'wb') as f:
+            pickle.dump(column, f)
 
 """
 Example clustering processing to try and guess good DBS parameters for the circle fitting.
@@ -76,6 +98,7 @@ Basic multi-processed KMeans routine for great circle counts,
 - save html for each great circle plot alongside returning the GCC parameter and GCC score 
 - decide a score to use: there's sklearn score default, etc.
 """
+# Deprecated
 def do_clustering(vararray):
     tableinfo, gcc_params, clustering_params = vararray
     writer = hdfutils.hdf5_writer(windows_directories.datadir, ascii_info.asciiname)
@@ -84,6 +107,7 @@ def do_clustering(vararray):
     table = galcentricutils.greatcount().gcc_table(table, *gcc_params)
     # Cluster the table
     clustered_table = galcentricutils.cluster().gaussmix(table,*clustering_params)
+# Deprecated.
 def do_gaussaicsbics(vararray):
     tableinfo, gcc_params, clustering_params = vararray
     writer = hdfutils.hdf5_writer(windows_directories.datadir, ascii_info.asciiname)
@@ -121,8 +145,6 @@ def do_gccsplit_confidence(vararray):
     mastersplit = vstack(splittables)
     graphutils.threed_graph().xmeans_L(mastersplit, savedex, True) """
 
-
-    #lentables = np.sum(np.array([len(d) for d in splittables]), axis=0)
     sigs = []
     # For each region get the significance
     for splittable in splittables:
@@ -131,8 +153,30 @@ def do_gccsplit_confidence(vararray):
         sig = 1 - cdf
         sigs.append(sig)
 
+    # Get the (n) for the phi_region that gives minimum significance/maximum confidence
+    minsig = argmin(sigs)
+    n_of_splittable_for_minsig = len(splittables[minsig])
+
     # Pick the minimum significance / maximum confidence (uncorrected)
     minsig = min(sigs)
 
-    # Return maximum significance for this point.
-    return [theta, phi, index, minsig]
+
+    # Return maximum significance for this point.thetas, phis, indices, sigmins = results
+    return [theta, phi, index, n_of_splittable_for_minsig, minsig]
+
+# Do a quick hdbscan clustering using the provided parameters: designed for duplimonte directory structure.
+# Arrayinfo should be [group, saveid] for the duplimonte: minpar as in cluster3d()
+def do_hdbscan(arrayinfominpar):
+    arrayinfo, minpar = arrayinfominpar
+    with open(windows_directories.duplimontedir + "\\" + arrayinfo[0] + "\\" + arrayinfo[1] + ".txt", 'rb') as f:
+        data = pickle.load(f)
+    data = np.array(data)
+    clustered = galcentricutils.cluster3d().listhdbs(data, minpar)
+    with open(windows_directories.duplimontedir + "\\" + arrayinfo[0] + "\\" + arrayinfo[1] + ".cluster.txt", 'wb') as f:
+        pickle.dump(obj=clustered, file=f)
+    # Generate a HTML for this clustering under imgdir\\ + "kmeans_html\\duplimonte_kmeanshtml\\" + group_saveid.html
+    savedexdir = "kmeans_html\\duplimonte_kmeanshtml\\" + arrayinfo[0] + "\\" + arrayinfo[1]
+    graphutils.threed_graph().kmeans_L_array(data, clustered, savedexdir, False)
+
+
+

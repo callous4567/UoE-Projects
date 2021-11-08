@@ -1,5 +1,6 @@
 import copy
 import os
+import time
 
 import astropy
 import numpy as np
@@ -19,6 +20,7 @@ import matplotlib.colors as mcolors
 import plotly.express as px
 import plotly.io as plio
 plio.renderers.default = 'browser'
+import plotly.graph_objects as go
 
 # Pandas
 import pandas
@@ -33,7 +35,7 @@ lxlylz in kpc kms^-1
 angles in degrees
 """
 
-# 2D Graphing Tools
+# 2D Graphing Tools prototyping
 class twod_graph(object):
     def __init__(self):
         self.null = "null"
@@ -89,20 +91,48 @@ class twod_graph(object):
         axs.scatter(phis, thetas, s=0.1, alpha=1, color="black")
         plt.show()
 
-    # 2D Histogram Plot in (l,b)
-    def lbtwodhist(self, table, nbins):
+    # Latipolar plot without Hammer Projection, with a great circle [theta,phi] plotted.
+    # Theta,phi are in regular galactocentric polar
+    def latipolar(self, table, theta_polar, phi):
         # First get latitude and azimuth
         table = galcentricutils.angular().get_latipolar(table)
         phis, thetas = np.deg2rad(table['phi']),np.deg2rad(table['theta'])
-        for num,phi in enumerate(phis):
-            if phi >= np.pi:
-                phis[num] = phi - 2*np.pi
+        fig, axs = plt.subplots(nrows=1, ncols=1, dpi=300)
+        axs.grid(True, which='major', alpha=1, linewidth=0.25, color="black")  # Enable grids on subplot
+        axs.grid(True, which='minor', alpha=1, linewidth=0.25, color="black")
+        phis, thetas = np.rad2deg(phis), np.rad2deg(thetas)
+        axs.scatter(phis, thetas, s=0.1, alpha=1, color="black")
+
+        # Add the greatcircle you've opted to display
+        gcc = galcentricutils.greatcount().gcc_gen(10000, theta_polar, phi) # thetas, phis
+        plt.scatter(gcc[1],90 - gcc[0], color="blue", s=1)
+
+        plt.show()
+
+    # 2D Histogram Plot in (theta,phi): calculates polar for the table.
+    def thetaphi_twodhist(self, table, nbins, savedex,latipolar):
+        # First get latitude and azimuth
+        table = galcentricutils.angular().get_polar(table)
+        phis, thetas = table['phi'],table['theta']
+        #for num,phi in enumerate(phis):
+        #    if phi >= np.pi:
+        #        phis[num] = phi - 2*np.pi
+        if latipolar == True:
+            thetas = 90 - thetas
         fig, axs = plt.subplots(nrows=1, ncols=1, dpi=300)
         h = axs.hist2d(phis, thetas, bins=[nbins,nbins], cmin=1, cmap = plt.cm.nipy_spectral)
         plt.colorbar(h[3], label="Bin Count")
         axs.grid(False)
-        axs.set(xlabel='l',
-                ylabel='b')
+        axs.set(xlabel=r'$\phi$',
+                ylabel=r'$\theta$')
+        if latipolar == True:
+            axs.set(ylabel=r'$\theta$' + " in Latipolar")
+        try:
+            os.mkdir(windows_directories.imgdir + "\\thetaphi_twodhist")
+        except:
+            pass
+
+        plt.savefig(windows_directories.imgdir + "\\thetaphi_twodhist" + "\\" + savedex + ".png")
         plt.show()
 
     # Regular 2D l,b plot.
@@ -136,7 +166,19 @@ class twod_graph(object):
             plt.hist(data, bins=nbins, density=True, range=range)
             plt.show()
 
-# 3D graphing tools
+    # Plot nclust vs. n for a monte-carloed clustering set
+    def nclust_n(self, data, group):
+        x = np.arange(0, len(data), 1)
+        y = data
+        fig, ax = plt.subplots(nrows=1,ncols=1)
+        ax.scatter(x, y, marker='x',color='black',s=10)
+        ax.set(xlabel="clustering/index",
+               ylabel="n_clust")
+        plt.suptitle("For " + group)
+        plt.show()
+
+
+# 3D graphing tools prototyping
 class threed_graph(object):
     def __init__(self):
         self.null = "null"
@@ -279,4 +321,115 @@ class threed_graph(object):
             postable['colour'] = ["400" for d in postable['z']]
         table_pandas = postable.to_pandas()
         fig = px.scatter_3d(table_pandas, x='x', y='y', z='z', color="colour")
+        fig.show()
+
+    # Except it takes arrays. Savedexdir here should be the directory\\savename
+    def kmeans_L_array(self, array, clusterdata, savedexdir, browser):
+        x,y,z = array.T
+        fig = px.scatter_3d(x=x, y=y, z=z, color=clusterdata)
+        if savedexdir != False :
+            save_loc = windows_directories.imgdir + "\\" + savedexdir + ".html"
+            fig.write_html(save_loc)
+        if browser == True:
+            fig.show()
+
+    # Given two clusterings [data1,data2] and label sets [labels1,labels2] plot both
+    # Shifts the 2nd labelling by 16 for colours.
+    def kmeans_L_array_pair(self, arrays, clusterdatas, savedexdir, browser, outliers=True):
+        # If outliers=False, then go and remove all (-1) elements from both arrays.
+        if outliers == False:
+            for num, clusterdata in enumerate(clusterdatas):
+                outlier_index = np.where(clusterdata == -1)[0]
+                array = arrays[num]
+                arrays[num] = np.delete(array, outlier_index, axis=0)
+                clusterdatas[num] = np.delete(clusterdata, outlier_index, axis=0)
+
+        # Need arrays. Make sure.
+        for num, array in enumerate(arrays):
+            if type(array) != "numpy.ndarray":
+                arrays[num] = np.array(array)
+            if type(clusterdatas[num]) != "numpy.ndarray":
+                clusterdatas[num] = np.array(clusterdatas[num])
+
+        # Limit to the viewing region
+        for num, array in enumerate(arrays):
+            array_clip_indices = galcentricutils.cluster3d().getCuboid(array)
+            arrays[num], clusterdatas[num] = array[array_clip_indices], clusterdatas[num][array_clip_indices]
+
+        # Apply colour shift to visualize cluster pairing
+        clusterdatas[1] = [d + 16 for d in clusterdatas[1]]
+        # Do the etc etc graphing
+        array = np.concatenate(arrays)
+        clusterdata = np.concatenate(clusterdatas)
+        x,y,z = array.T
+        fig = px.scatter_3d(x=x, y=y, z=z, color=clusterdata)
+        if savedexdir != False :
+            save_loc = windows_directories.imgdir + "\\" + savedexdir + ".html"
+            fig.write_html(save_loc)
+        if browser == True:
+            fig.show()
+
+    # Plots data alongside 3D gaussian convex hulls for provided gaussians. Data as vertical np array
+    # [[v1],
+    #  [v2],
+    #  ....]
+    # npoints for convex hull of the multinormals
+    # Does not support colouring datasets individually.
+    def kmeans_L_multinormal(self, vec_L, mus, covtrices, npoints):
+        # Define rng
+        rng = np.random.default_rng()
+        # Tracelist
+        gotracelist = []
+        # Set up trace for the actual data
+        vecx,vecy,vecz = vec_L.T
+        vectrace = go.Scatter3d(x=vecx,
+                                y=vecy,
+                                z=vecz,
+                                name="Data",
+                                marker=dict(color='rgb(34,163,192)'),
+                                mode='markers')
+        gotracelist.append(vectrace)
+
+        # Set up traces for each mu/covtrix (we're not trying to be fancy here- just somewhat dirty.
+        for num, mu, cov in zip(range(len(mus)),mus,covtrices):
+            points = rng.multivariate_normal(mean=mu,cov=cov,size=npoints)
+            points = points.T
+            mvtrace = go.Mesh3d(x=points[0],y=points[1],z=points[2],
+                                alphahull=0,opacity=0.25,
+                                name=("MV {}").format(str(num)))
+            gotracelist.append(mvtrace)
+
+        fig = go.Figure(data=gotracelist)
+        fig.show()
+
+    # Visualize generated multivariate normals from noisy_data.
+    # n_mesh = number of points per mesh (for the mucov multivariate normal.)
+    # n_points = a list or tuple with the number of RNG per normal
+    def kmeans_L_multinormal_generated(self,mucovs,n_points,n_mesh):
+        # Mus and Covs as in generated multinormals
+        mus, covtrices = mucovs
+
+        # Define rng
+        rng = np.random.default_rng()
+
+        # Tracelist
+        gotracelist = []
+
+        # Set up traces for each mu/covtrix (we're not trying to be fancy here- just somewhat dirty.
+        for num, mu, cov, npoint in zip(range(len(mus)), mus, covtrices, n_points):
+            # Generate convex hull
+            points = rng.multivariate_normal(mean=mu,cov=cov,size=n_mesh)
+            points = points.T
+            meshtrace = go.Mesh3d(x=points[0],y=points[1],z=points[2],
+                                  alphahull=0,opacity=0.25,
+                                  name=("Mesh {}").format(str(num)),
+                                  color=int(num))
+            points = points[0:npoint]
+            scattrace = go.Scatter3d(x=points[0],y=points[1],z=points[2],
+                                     name=("Scatter {}").format(str(num)),
+                                     mode='markers')
+            gotracelist.append(meshtrace)
+            gotracelist.append(scattrace)
+
+        fig = go.Figure(data=gotracelist)
         fig.show()
