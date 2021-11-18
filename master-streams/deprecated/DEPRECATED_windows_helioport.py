@@ -4,8 +4,6 @@ import ascii_info, windows_directories, galcentricutils, hdfutils
 
 # This is deprecated: we are dealing with Galactic-Galactocentric conversions, not ICRS-Galactocentric conversions :/
 
-
-
 # Set up handler for conversion
 galcent = galcentricutils.galconversion(windows_directories.sourcedir)
 

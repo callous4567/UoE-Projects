@@ -6,11 +6,11 @@ import scipy
 import munkres
 from astropy.stats import sigma_clipped_stats
 from astropy.table import Table
+from matplotlib import pyplot as plt
 from numpy.random import bit_generator
 from sklearn.metrics.cluster import contingency_matrix
 from sympy import *
 import math
-
 import ascii_info
 import graphutils
 import hdfutils
@@ -23,7 +23,6 @@ import astropy.units as u
 import plotly.io as plio
 import hdbscan
 from scipy.spatial import ConvexHull
-
 import windows_directories
 from hdbscan import flat
 plio.renderers.default = "browser"
@@ -68,6 +67,7 @@ class galconversion(object):
         self.sol_params = sol_params
 
     # Set up/define new galactocentric system with solar parameters: new system called "master-streams"
+    # cartesian galcen_v_sun and cartesian Z in galcentric
     def solgal_set(self):
         galstate = galactocentric_frame_defaults.get_from_registry('latest')
         galstate["parameters"]["galcen_distance"] = np.abs(self.sol_params[0][0]) * u.kpc
@@ -607,15 +607,14 @@ class monte_angular(object):
 
 # Great Circle Cell Counts in the Galactocentric System, as defined by 1996 Johnston Paper.
 # Note: Designed to work in Standard Polar, not Latipolar. ALL IN DEGREES!
-"""
-
-"""
+# Astropy Tables
 class greatcount(object):
     def __init__(self):
         self.null = "null"
 
     """
     Sagittarius within 273,-13 degrees, maybe 1 degree off (thus 103,273 in theta/phi) 
+    dtheta is the HALF WIDTH of the GCC count. HALF WIDTH MATE!!! 
     """
     # Given a table, theta, phi, delta-theta, grab all members within this cell from table, produce new table.
     # NOTE: Poor Performance. If running optimization, switch to arrays and indices. Rebuild table post-calculation.
@@ -874,7 +873,8 @@ class greatcount(object):
 
         return thetas, phis
 
-# Carry out a clustering (HDBSCAN-oriented)
+# Carry out a clustering (HDBSCAN-oriented).
+# Needs array [L1,L2,L3...]
 class cluster3d(object):
     def __init__(self):
         self.null = "null"
@@ -1040,6 +1040,7 @@ class genclust3d(object):
             return pointslist, covslist
 
 # Comparison Metrics for Clusters, specific to our data structure.
+# Uses lists of cluster indices.
 class compclust(object):
     def __init__(self):
         null = "null"
@@ -1083,4 +1084,6 @@ class compclust(object):
             tranlatorDict[uniqueLabels2[thisPair[1]]] = uniqueLabels1[thisPair[0]]
 
         return [tranlatorDict[label] for label in clust2]
+
+
 

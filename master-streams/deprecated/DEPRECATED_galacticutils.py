@@ -68,3 +68,5 @@ class galconversion(object):
         # Modify and save table.
         table['l'],table['b'],table['dmu_l'],table['dmu_b'] = l_list,b_list,dmu_l_list,dmu_b_list
         writer.write_table(group, set, table)
+
+# ICRS and Galactic Conversions. Not useful (any use has been wrapped in galcentricutils already, anyway.)

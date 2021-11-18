@@ -4,6 +4,8 @@ import numpy as np
 import ascii_info
 import windows_multiprocessing
 
+# Generate aics/bics for a bunch of clusterings.
+
 # Set up coordinate grid
 ntheta = 20
 nphi = 20

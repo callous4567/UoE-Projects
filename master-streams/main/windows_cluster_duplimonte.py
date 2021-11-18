@@ -7,6 +7,8 @@ import graphutils
 import hdfutils
 import galcentricutils
 
+# This file will run clustering for all the individual clusterings we have and produce clustered lists (pickled)
+
 """
 # Generate arrayinfo, minpar = arrayinfominpar
 # Arrayinfo should be [group, saveid] for the duplimonte: minpar as in cluster3d()
