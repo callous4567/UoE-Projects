@@ -12,7 +12,7 @@ This includes code for the:
 
 ### 4th Year Telescope Group Project (Star Clusters Project) 
 
-### 5th Year Computational Astrophysics (tbd), Python Analysis and Visualization (tbd) and DAML (tbd) courses, alongside MPhys (tbd, data redacted) 
+### 5th Year Computational Astrophysics, Python Analysis and Visualization (tbd) and DAML (tbd) courses, alongside MPhys (tbd, data redacted) 
 *Mphys is "master-streams" and is currently WIP- note that if you use this code, you should make sure to give me credit in some part... :/* 
 
 Disclaimer: a lot of it is dirty/as-it-was-after-ending-the-work
