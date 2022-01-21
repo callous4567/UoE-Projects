@@ -2,9 +2,11 @@ import multiprocessing
 import ascii_info
 import windows_multiprocessing
 
-# Just to generate artificial momentum sets for clustering.
-# Important note: You need to ensure that panda_raw has covariance matrices and means already in there.
-# Just run monte_multitable to set this up and you'll be fine (that generates panda_raw anyway.)
+"""
+Just to generate artificial momentum sets for clustering.
+Important note: You need to ensure that panda_raw has covariance matrices and means already in there.
+Just run monte_multitable to set this up and you'll be fine (that generates panda_raw anyway.)
+"""
 
 """
 m = ascii_info.duplimonte_number

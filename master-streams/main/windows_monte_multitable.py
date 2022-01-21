@@ -13,9 +13,10 @@ import windows_stack
 from windows_stack import dataframes_to_tables
 
 """
-Multiprocessed Monte-Carlo. Also sorts out Angular Momenta. 
+Multiprocessed Monte-Carlo. Also sorts out Angular Momenta and 4D Clustering parameters we wanted. 
 Multiprocess the monte-carlo thing.
 The process needs to be ENTIRELY SELF CONTAINED for EACH TABLE: no calling externals.
+Does covmonte for all data. 
 """
 
 # NOTE THAT WE'RE DEALING WITH COVARIANCE MATRICES! THE RESULTS FROM HEREON ARE IN PANDAS DATAFRAMES!!!
@@ -24,6 +25,7 @@ groups = ascii_info.all_groups
 astropysets = [ascii_info.set_raw for group in groups]
 pandasets = [ascii_info.panda_raw for group in groups]
 zipped = list(zip(groups, astropysets, pandasets))
+# Number of individual datapoints to monte over.
 windows_multiprocessing.n_monte = 200
 windows_multiprocessing.sourcecoord = "solar_info.dat"
 results = ["null"]

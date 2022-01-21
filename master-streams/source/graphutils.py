@@ -7,13 +7,16 @@ import numpy as np
 from astropy.table import Table, unique, vstack
 
 # Our own stuff.
+
 import galcentricutils
+import hdfutils
 import windows_directories
 
 # Matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.ticker as pltick
 import matplotlib.colors as mcolors
+from matplotlib import cm
 
 
 # Plotly
@@ -25,6 +28,13 @@ import plotly.graph_objects as go
 # Pandas
 import pandas
 
+# Pillow
+import PIL
+from PIL import Image
+
+# Misc Astropy
+from astropy.visualization import LogStretch
+from astropy.visualization.mpl_normalize import ImageNormalize
 
 # Holds all graphing utilities for project. Notes:
 """
@@ -110,7 +120,7 @@ class twod_graph(object):
         plt.show()
 
     # 2D Histogram Plot in (theta,phi): calculates polar for the table.
-    def thetaphi_twodhist(self, table, nbins, savedex,latipolar):
+    def thetaphi_twodhist(self, table, nbins, savedex, latipolar):
         # First get latitude and azimuth
         table = galcentricutils.angular().get_polar(table)
         phis, thetas = table['phi'],table['theta']
@@ -166,14 +176,20 @@ class twod_graph(object):
             plt.hist(data, bins=nbins, density=True, range=range)
             plt.show()
 
-    # Plot nclust vs. n for a monte-carloed clustering set
+    # Plot nclust vs. n for a monte-carloed clustering set.
+    # Also subplot the PDF for the clustering.
     def nclust_n(self, data, group):
+        # The n_clust/clustering plot.
         x = np.arange(0, len(data), 1)
         y = data
-        fig, ax = plt.subplots(nrows=1,ncols=1)
-        ax.scatter(x, y, marker='x',color='black',s=10)
-        ax.set(xlabel="clustering/index",
+        fig, axs = plt.subplots(nrows=1,ncols=2,sharey='row', gridspec_kw={'width_ratios': [3,1]})
+        plt.subplots_adjust(wspace=0.1, hspace=0)
+        axs[0].scatter(x, y, marker='x',color='black',s=10)
+        axs[0].set(xlabel="clustering/index",
                ylabel="n_clust")
+
+        # Generate a PDF, too.
+        axs[1].hist(y, bins=50, density=True, orientation='horizontal', color='black')
         plt.suptitle("For " + group)
         plt.show()
 
@@ -239,8 +255,9 @@ class threed_graph(object):
 
         table_pandas = table.to_pandas()
         fig = px.scatter_3d(table_pandas, x='Lx', y='Ly', z='Lz', color='k_index')
-        save_loc = windows_directories.imgdir + "\\kmeans_html" + "\\" + savedex
-        fig.write_html(save_loc)
+        if savedex != False:
+            save_loc = windows_directories.imgdir + "\\kmeans_html" + "\\" + savedex
+            fig.write_html(save_loc)
         if browser == True:
             fig.show()
 
@@ -335,7 +352,7 @@ class threed_graph(object):
 
     # Given two clusterings [data1,data2] and label sets [labels1,labels2] plot both
     # Shifts the 2nd labelling by 16 for colours.
-    def kmeans_L_array_pair(self, arrays, clusterdatas, savedexdir, browser, outliers=True):
+    def kmeans_L_array_pair(self, arrays, clusterdatas, savedexdir, browser, outliers=False):
         # If outliers=False, then go and remove all (-1) elements from both arrays.
         if outliers == False:
             for num, clusterdata in enumerate(clusterdatas):
@@ -433,3 +450,182 @@ class threed_graph(object):
 
         fig = go.Figure(data=gotracelist)
         fig.show()
+
+# More specific graphing functions that may make use of/are based on the above, or be novel.
+class spec_graph(object):
+    def __init__(self):
+        self.null = "null"
+
+    """
+    radec plot. 
+    Select a cluster_id, otherwise all are plotted. 
+    Set vasiliev to True to display his Sgr_snapshot (with LMC.) 
+    """
+    def clust_radec(self, table, clustering, cluster_id=False, vasiliev=False):
+        if cluster_id is False:
+            # Get the n0 of clusters
+            nclust = np.max(clustering) + 1
+
+            # Also grab the order of the clusters, too, based on which is largest/smallest.
+
+            # ICRS-up the thing and do the plot...
+            fig, axs = plt.subplots(nrows=1, ncols=1, dpi=300)
+
+            # first do Vasilievs, though.
+            if vasiliev==True:
+                simdir = windows_directories.datadir + "\\vasiliev\\Sgr_snapshot"
+                simfile = "simdata.hdf5"
+                writer = hdfutils.hdf5_writer(simdir, simfile)
+                sim_table = writer.read_table("Sgr_snapshot", "astrotable")
+                tab_x, tab_y = sim_table['ra'], sim_table['dec']
+                axs.scatter(tab_x, tab_y, color="gray", s=0.01, marker=".")
+
+            # Sort table by clustering
+            table = galcentricutils.galconversion().nowrite_GAL_to_ICRS(table)
+            table['cluster'] = clustering
+            table_by_clust = table.group_by("cluster")
+
+            # Miscellaneous thing to ensure non-cyclical rainbow colourmap.
+            cm = plt.get_cmap('gist_rainbow')
+            axs.set_prop_cycle('color', [cm(1. * i / nclust) for i in range(nclust)])
+
+            # Define an arbitrary function to set the scale based on the number of stars in the clustering.
+            # This is just to ensure that the larger clusters don't just block out the smaller ones.
+            scale = lambda n: 0.1 + 5*((30/n)**0.8)
+
+            # Save the masked tables
+            masked_tables = []
+            masked_tables_lengths = []
+
+            # Get masked tables for each cluster, alongside the number of stars in each
+            for cluster_id in range(nclust):
+                clustmask = table_by_clust.groups.keys["cluster"] == cluster_id
+                masked_table = table_by_clust.groups[clustmask]
+                masked_tables.append(masked_table)
+                masked_tables_lengths.append(len(masked_table))
+
+            # Sort the tables and table scales (just to ensure we don't hide away small ones under big ones)
+            sorted_tables = [x for (y, x) in sorted(zip(masked_tables_lengths, masked_tables), key=lambda pair: pair[0])]
+            sorted_tables.reverse()
+
+            # Now, plot for the sorted tables
+            for sorted_table in sorted_tables:
+                tab_x, tab_y = sorted_table['ra'], sorted_table['dec']
+                axs.scatter(tab_x, tab_y, s=scale(len(sorted_table)), marker="s")
+
+            # Misc axis things
+            axs.set_facecolor("k")
+            plt.gca().invert_xaxis()
+            axs.grid(True, which='major', alpha=1, linewidth=0.25)
+            axs.grid(True, which='minor', alpha=1, linewidth=0.25)
+            axs.grid(color="white")
+            axs.set(xlabel=r'$\alpha$', ylabel=r'$\delta$')
+
+            # Show
+            plt.show()
+
+        else:
+            # Grab the ra/dec list for the cluster_id
+            table['cluster'] = clustering
+            table_by_clust = table.group_by("cluster")
+            clustmask = table_by_clust.groups.keys["cluster"] == cluster_id
+            masked_table = table_by_clust.groups[clustmask]
+
+            # ICRS-up the thing and do the plot...
+            fig, axs = plt.subplots(nrows=1, ncols=1, dpi=300)
+            # first do Vasilievs, though.
+            if vasiliev==True:
+                simdir = windows_directories.datadir + "\\vasiliev\\Sgr_snapshot"
+                simfile = "simdata.hdf5"
+                writer = hdfutils.hdf5_writer(simdir, simfile)
+                sim_table = writer.read_table("Sgr_snapshot", "astrotable")
+                tab_x, tab_y = sim_table['ra'], sim_table['dec']
+                axs.scatter(tab_x, tab_y, color="gray", s=0.01, marker=".")
+            # Then our clustering...
+            masked_table = galcentricutils.galconversion().nowrite_GAL_to_ICRS(masked_table)
+            tab_x, tab_y = masked_table['ra'], masked_table['dec']
+            axs.grid(True, which='major', alpha=1, linewidth=0.25, color="black")  # Enable grids on subplot
+            axs.grid(True, which='minor', alpha=1, linewidth=0.25, color="black")
+            axs.scatter(tab_x, tab_y, color="red", s=5, marker="s")
+            axs.set_facecolor("k")
+            plt.gca().invert_xaxis()
+            axs.set(xlabel=r'$\alpha$', ylabel=r'$\delta$')
+            axs.grid(color="white")
+            # We can also add a great circle...
+            #gcc = galcentricutils.greatcount().gcc_gen(10000, 45, 5)  # thetas, phis, degrees.
+            #axs.scatter(gcc[1], 90 - gcc[0], color="blue", s=0.1)
+            plt.show()
+
+    # Misc func for handling image tiling.
+    # https://stackoverflow.com/questions/37921295/python-pil-image-make-3x3-grid-from-sequence-images
+    def image_grid(self, imgs, rows, cols):
+        assert len(imgs) == rows * cols
+
+        w, h = imgs[0].size
+        grid = Image.new('RGB', size=(cols * w, rows * h))
+        grid_w, grid_h = grid.size
+
+        for i, img in enumerate(imgs):
+            grid.paste(img, box=(i % cols * w, i // cols * h))
+        return grid
+
+    # Produces Circularity-Lz-etc style plots from Sarah Sofie Lovdals thesis.
+    # Fine-tuned for our data. Adjust for yours, if you are using this.
+    def sofie(self, table):
+        # Set up each individua (sub)plot
+        axes_xy = [["Lz", "E"], ["Lz", "L"], ["circ", "Lz"], ["L", "E"], ["circ", "L"], ["circ", "E"]]
+        lims = {
+            "L": [0, 15000],
+            "Lz": [-15000,15000],
+            "E": [-180000, 100000],
+            "circ": [-0.75, 0.75]
+        }
+        labels = {
+            "L": "L",
+            "Lz": "Lz",
+            "E": "E",
+            "circ": r'$\eta$'
+        }
+        images = []
+        for combo in axes_xy:
+            xs = table[combo[0]]
+            ys = table[combo[1]]
+            cmap = cm.get_cmap("hot")
+            cmap.set_under('w')
+            fig = plt.figure(figsize=(7.5, 5))
+            ax = fig.add_subplot(1, 1, 1, projection='scatter_density')
+
+            # Make the norm object to define the image stretch
+            #norm = ImageNormalize(vmin=0., vmax=8, stretch=LogStretch())
+            axis = ax.scatter_density(xs, ys, cmap=cmap, vmin=.01, vmax=8)#, norm=norm)
+
+            # ax.set(xlim=[-0.1,0.1],
+            #       ylim=[-1000,1000])
+
+            fig.colorbar(axis, label='density of stars')
+
+            ax.set(xlim=lims[combo[0]],
+                   ylim=lims[combo[1]])
+            ax.set(xlabel=labels[combo[0]],
+                   ylabel=labels[combo[1]])
+
+            ax.grid(True, which='major', alpha=0, linestyle='dotted')  # Enable grids on subplot
+            ax.grid(True, which='minor', alpha=0, linestyle='dotted')
+            # ax.set(xlim=lims,
+            #       ylim=lims)
+            ax.tick_params(axis="x", which="both", direction="in", length=4, bottom=True, left=True, right=True,
+                           top=True)
+            ax.tick_params(axis="y", which="both", direction="in", length=4, bottom=True, left=True, right=True,
+                           top=True)
+
+            image = combo[0] + "_" + combo[1] + ".png"
+            images.append(image)
+            plt.savefig(image, dpi=300)
+
+        # Clip the images together, now.
+        # https://stackoverflow.com/questions/30227466/combine-several-images-horizontally-with-python
+        list_im = images
+        imgs = [PIL.Image.open(i) for i in list_im]
+        grid = self.image_grid(imgs, rows=2, cols=3)
+        grid.save('Trifecta.jpg')
+

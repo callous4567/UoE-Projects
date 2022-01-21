@@ -50,6 +50,8 @@ class dataframes_to_tables():
             df = writer.read_df(group, pandaset)
             df = df.drop(columns="covtrix")
             df = df.drop(columns="vec_L")
+            df = df.drop(columns="covtrix2")
+            df = df.drop(columns="vec_4d")
             table = Table.from_pandas(df)
             writer.write_table(group, astropyset, table)
 

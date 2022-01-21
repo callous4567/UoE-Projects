@@ -11,6 +11,10 @@ import windows_stack
 from windows_directories import datadir, asciidir, sourcedir
 from ascii_info import asciiname, fullgroup, fullset, set_raw
 
+"""
+This file will handle import and pre-processing of data from the provided ASCII's we've got.
+"""
+
 # Future notes for using columns
 """
 To grab the data:

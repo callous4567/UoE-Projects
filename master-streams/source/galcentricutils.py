@@ -12,6 +12,7 @@ from sklearn.metrics.cluster import contingency_matrix
 from sympy import *
 import math
 import ascii_info
+import energistics
 import graphutils
 import hdfutils
 import os
@@ -39,11 +40,16 @@ plio.renderers.default = "browser"
 # TODO: Note that we're trying to make sure code is oriented to work with both pandas and astropy tables.
 # TODO: Table Covmonte needs numpy multivariate normal generation instead (faster than generating each set individually)
 
-# Convert from ICRS to Galactocentric and back with custom solar system parameters (set via .dat file of right format.)
+# Handles Galactocentric Cartesian/Galactic Cartesian transformations (with ICRS optional-see deprected)
 class galconversion(object):
     def __init__(self):
         self.owd, self.sol_params = os.getcwd(), np.zeros((1,4))
         self.source = "null"
+        # Note about sol_params
+        """
+        0 is pos, 1 is err, 2 is vel, 3 is err
+        x y z respectively.
+        """
 
     # Grab hold of the parameters of the solar system from source_solar and SETS THESE FOR ASTROPY.
     # Note that you have to provide source_solar: to deal with conflicting sources. See samples.
@@ -316,7 +322,7 @@ class galconversion(object):
 
         return l, b, distance, dmul, dmub, vlos
 
-# Some tools for angular-related things.
+# Some tools for spherical-polar angular-related things.
 class angular(object):
     def __init__(self):
         self.null = "null"
@@ -417,7 +423,40 @@ class angular(object):
     def vec_get_radii(self, vec):
         return np.linalg.norm(vec[0:3])
 
-# Galactocentric system rotations/etc. x-convention. Recalculates angular momentum, too, in the new system.
+    # Convert to cylindrical coordinates: R, phi, vR, vT - necessary for galpy orbits module.
+    # vR is radial velocity, vT is transverse velocity: it can be a negative quantity.
+    def get_cylindrical(self, table):
+        # Evaluate positions (R, phi) and unit vectors
+        pos = np.array([table['x'], table['y']]).T
+        norms = np.array([np.linalg.norm(d) for d in pos])
+        R_unit = np.array([pos[d]/norms[d] for d in range(len(pos))])
+
+        # Get R and Phi
+        table['R'] = np.array([np.linalg.norm(d) for d in pos])
+        phis = np.zeros(shape=np.shape(table['R']), dtype=np.float64)
+        for i in range(len(table['R'])):
+            phi = math.atan2(pos[i][1], pos[i][0])
+            if phi < 0:
+                phi += 2 * np.pi
+            phis[i] = math.degrees(phi)
+        table['phi'] = phis
+
+        # Evaluate phi tangent unit vectors and get vT/vR
+        """
+        r = R[cos, sin]
+        dr/dphi = R[-sin, cos]
+        phi_unit = [-sin, cos]
+        """
+        phi_unit = np.array([np.array([-np.sin(phi),np.cos(phi)]) for phi in np.deg2rad(table['phi'])])
+        v_xy = np.array([table['vx'],table['vy']]).T
+        vR = np.array([np.dot(ru, vxy) for ru, vxy in zip(R_unit, v_xy)])
+        vT = np.array([np.dot(pu, vxy) for pu, vxy in zip(phi_unit, v_xy)])
+        table['vR'], table['vT'] = vR, vT
+
+        return table
+
+# Galactocentric Cartesian system rotations/etc.
+# x-convention. Recalculates angular momentum, too, in the new system.
 # Passive transformation: gives values in the new system, alongside the unit vectors of the new system (in the old.)
 # https://mathworld.wolfram.com/EulerAngles.html Euler Convention (Goldstein 1980)
 # Give angles in degrees.
@@ -486,7 +525,8 @@ class monte_angular(object):
     def vec_monte(self, vec, n):
         # Generate spread for vec (errors in parameter space)
         dists = np.random.default_rng().normal(vec[2], vec[6], n)
-        dists = np.abs(dists) # negatives happen- bad for calculating.
+        dists = np.abs(dists) # negatives happen- bad for calculating. Introduces bias for low dist (not interested.)
+                              # TODO: Even if a bias occurs here, it'll be so few that it shouldn't impact. Check later.
         dmuls = np.random.default_rng().normal(vec[3], vec[7], n)
         dmubs = np.random.default_rng().normal(vec[4], vec[8], n)
         vloses = np.random.default_rng().normal(vec[5], vec[9], n)
@@ -521,6 +561,7 @@ class monte_angular(object):
         table['dLx'],table['dLy'],table['dLz'] = dLx,dLy,dLz
         return table
     # Same as above, but returns Covariance Matrix.
+    # TODO: Four other parameters to implicate in covariance estimate: L LZ E CIRCULARITY
     def vec_covmonte(self, vec, n):
         # Get the angular momentum for this vector (judged as the "mean")
         vec_galcent = self.converter.vec_GAL_to_GALCENT(*vec[0:6])
@@ -549,17 +590,52 @@ class monte_angular(object):
         L_dev = L - vec_L # difference from mean, vector representation
         L_dev = L_dev.T # list representation
 
-        # Calculate Covariance Matrix
+        # Calculate Covariance Matrix, FOR STANDARD L CLUSTERING
         cov = np.zeros(shape=(3,3))
         for i in range(3):
             for j in range(3):
                 cov[i,j] = np.mean(L_dev[i]*L_dev[j], axis=0)
 
-        # Get the standard deviations
+        # Get the standard deviations FOR STANDARD L CLUSTERING
         stdevs = []
         for i in range(3):
-            dev_i = math.sqrt(cov[i,i])
+            dev_i = math.sqrt(cov[i, i])
             stdevs.append(dev_i)
+
+        # Calculate Energy, L_magnitude, and Circularity (for 4D clustering) and their means
+        orbi = energistics.orbigistics()
+        table = orbi.orbilarity(astrotable)
+        E_mean = np.mean(table['E'])
+        circ_mean = np.mean(table['circ'])
+        L_mag = np.array([np.linalg.norm(d) for d in L])
+        L_mean = np.mean(L_mag)
+        bound_or_not = table['bound']
+
+        # Generate Deviations
+        L_mag_dev = L_mag - L_mean
+        Lz_dev = table['Lz'] - np.mean(table['Lz'])
+        E_dev = table['E'] - E_mean
+        circ_dev = table['circ'] - circ_mean
+        deviation_vector = [L_mag_dev,Lz_dev,E_dev,circ_dev]
+
+        # Generate second Covariance Matrix, FOR 4D ABS(L), LZ, E, CIRC CLUSTERING!
+        cov2 = np.zeros(shape=(4, 4))
+        for i in range(4):
+            for j in range(4):
+                cov2[i,j] = np.mean(deviation_vector[i]*deviation_vector[j], axis=0)
+
+        # Since we have vec_L, get a vector with these four variables, too.
+        table2 = Table(names=table.columns)
+        table2.add_row(table[0])
+        table2 = orbi.orbilarity(table2)
+        vec_4d = np.array([table2['L'][0], table2['Lz'][0], table2['E'][0], table2['circ'][0]])
+
+        # Get the standard deviations FOR 4D ABS(L), LZ, E, CIRC CLUSTERING!
+        stdevs2 = []
+        for i in range(4):
+            dev_i = math.sqrt(cov2[i,i])
+            stdevs2.append(dev_i)
+
 
         # Calculate the Pearson Coefficients for this matrix (returning them as an array, too.)
         #pears = np.zeros(shape=(3,3))
@@ -568,31 +644,39 @@ class monte_angular(object):
         #        if i != j:
         #            pears[i,j] = cov[i,j]/(stdevs[0,i]*stdevs[0,j])
 
-        return cov, stdevs, vec_L
+
+
+        return cov, stdevs, vec_L, cov2, stdevs2, vec_4d, bound_or_not
     # Returns a pandas dataframe instead: useful to avoid write conflicts. Cleanup after.
     # Same monte as above, except with covariance matrices under ['covtrix'] too.
     def table_covmonte(self, table, n):
         table = self.converter.nowrite_GAL_to_GALCENT(table)
         table = angular().get_momentum(table)
-        covtrices, stdevslist = [], []
-        mean_angulars = []
+        covtrices, stdevslist, mean_angulars = [], [], []
+        covtrices2, stdevslist2, mean_4ds = [], [], []
         for row in table:
             l, b, dist, dmul, dmub, vlos = row['l'], row['b'], row['dist'], row['dmu_l'], row['dmu_b'], row['vlos']
             edist, edmul, edmub, evlos = row['edist'], row['edmu_l'], row['edmu_b'], row['evlost']
             vec = [l, b, dist, dmul, dmub, vlos, edist, edmul, edmub, evlos]
-            covtrix, stdevs, vec_L = self.vec_covmonte(vec, n)
-            covtrices.append(covtrix), stdevslist.append(stdevs)
-            mean_angulars.append(vec_L)
+            covtrix, stdevs, vec_L, covtrix2, stdevs2, vec_4d, bound_or_not = self.vec_covmonte(vec, n)
+            covtrices.append(covtrix), stdevslist.append(stdevs), mean_angulars.append(vec_L)
+            covtrices2.append(covtrix2), stdevslist2.append(stdevs2), mean_4ds.append(vec_4d)
 
         df = table.to_pandas()
+        df['bound'] = bound_or_not
         df['vec_L'] = mean_angulars
         df['covtrix'] = covtrices
         df['dLx'], df['dLy'], df['dLz'] = np.array(stdevslist).T
+        df['vec_4d'] = mean_4ds
+        df['L'], df['Lz'], df['E'], df['circ'] = np.array(mean_4ds).T
+        df['covtrix2'] = covtrices2
+        df['dL'], df['dLz'], df['dE'], df['dcirc'] = np.array(stdevslist2).T # in order
 
         return df
     # Given table with n rows, will generate m multivariate-normal distributed momentum vectors for each row in table.
     # Will return a pandas, with n rows, and m columns: each column is one unique set of momentum vectors.
     # TODO: If you go down and do 2D analysis, you will need to scatter in energy space, too. Hence position.
+    # TODO: Update 19/1/22 - 4D Analysis. Need to also monte-up L, Lz, E, Circularity.
     def panda_duplimonte(self, table, m):
         covtrices = table['covtrix']
         L_vectors = table['vec_L']
@@ -926,26 +1010,28 @@ class cluster3d(object):
         hdbsfit = hdbs.fit_predict(array)
         return np.array(hdbsfit)
 
-    """
+
     # Hierarchical DBS: returns memberships. Astropy Tables.
     # Deprecated basically (designed for kmeans_L/xmeans_L graph)
     # Keeping it around in case it needs to be revived for use. 
-    def hdbs(self, table, browser):
+    def hdbs(self, table, browser, minpar):
         table = self.clean(table, 5)
         L = np.array([table['Lx'], table['Ly'], table['Lz']]).T
-        hdbs = hdbscan.HDBSCAN(min_cluster_size=int(len(table)**(1/3)),
-                               min_samples=int(len(table)**(1/4)),
+        hdbs = hdbscan.HDBSCAN(min_cluster_size=minpar[0],
+                               min_samples=minpar[1],
                                metric='l2',
                                algorithm='best')
         hdbsfit = hdbs.fit_predict(L)
         table['k_index'] = np.array(hdbsfit)
         #save_format = ("HDBS_TEST_EPS{0}_MINSAMP{1}" + ".html").format(eps, min_samples)
-        graphutils.threed_graph().kmeans_L(table, "test_hdbs.html", browser)
+        graphutils.threed_graph().kmeans_L(table, False, browser)
         #graphutils.threed_graph().xmeans_L(table, "test_hdbs.html", browser)
         return table
-    """
 
-# Create random 3D multivariates for cluster testing, bounded by cluster3d() bounding cuboid, reliant on normal dists.
+
+# Create pseudo-random 3D multivariates for cluster testing,
+# bounded by cluster3d() bounding cuboid,
+# reliant on normal dists.
 class genclust3d(object):
     def __init__(self):
         self.null = "null"
@@ -1049,7 +1135,8 @@ class compclust(object):
     def nclust_get(self, clust):
         return np.max(clust) + 2
 
-    # For a group, get the entirety of the set and get the number of clusters per clustering
+    # For a group, get the entirety of the set and get the number of clusters per clustering.
+    # Also generates a PDF for the set of a given clustering having n_clust.
     def graph_nclust(self, group):
         # Load in the lists as a list of lists!
         arrays = [windows_directories.duplimontedir + "\\" + group + "\\" + d + ".cluster.txt" \
@@ -1063,7 +1150,7 @@ class compclust(object):
         # Pass this to graphutils plotting to generate a plot
         graphutils.twod_graph().nclust_n(arrays, group)
 
-    # Given two clusterings (clust1,clust2), map clust2 onto clust1.
+    # Given two clusterings (clust1,clust2), map clust2 onto clust1 and return remapped clust 2 (same original format.)
     # TODO: Change this to work confusion matrices instead (contingency matrix.)
     """
     Thank Pallie/Aaron!
@@ -1083,7 +1170,7 @@ class compclust(object):
         for thisPair in labelTranlater:
             tranlatorDict[uniqueLabels2[thisPair[1]]] = uniqueLabels1[thisPair[0]]
 
-        return [tranlatorDict[label] for label in clust2]
+        return np.array([tranlatorDict[label] for label in clust2])
 
 
 

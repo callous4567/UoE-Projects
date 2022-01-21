@@ -37,7 +37,7 @@ def do_monte_table(groupset):
             print("Write Conflict. Sleeping")
             time.sleep(5)
             continue
-# do_monte but with covariance matrices: note that we're now dealing with PANDAS DATAFRAMES and NOT ASTORPY TABLES
+# do_monte but with covariance matrices: note that we're now dealing with PANDAS DATAFRAMES and NOT ASTROPY TABLES
 def do_covmonte_table(groupsetsaveset):
     #print("Covmontecarloing' ", groupsetsaveset)
     group,astropyset,pandaset = groupsetsaveset
@@ -53,7 +53,7 @@ def do_covmonte_table(groupsetsaveset):
     # Save the table: watch out for if file is already being written to (retry if it fails.)
     while True:
         try:
-            print("writing")
+            print("writing ", groupsetsaveset)
             writer.write_df(group, pandaset, df)
             break
         except:

@@ -88,7 +88,7 @@ class hdf5_writer(object):
         with h5py.File(self.filename, 'a') as f:
             del f[group, dataset]
         os.chdir(self.owd)
-    # Write an astropy table
+    # Write an astropy table: WORKS FOR QTABLES, TOO.
     def write_table(self, group, dataset, astropytable):
         os.chdir(self.directory)
         astropy.io.misc.hdf5.write_table_hdf5(astropytable, self.filename, path=(group + "/" + dataset), append=True,overwrite=True, serialize_meta=True)

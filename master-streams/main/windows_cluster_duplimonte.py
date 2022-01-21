@@ -7,7 +7,9 @@ import graphutils
 import hdfutils
 import galcentricutils
 
-# This file will run clustering for all the individual clusterings we have and produce clustered lists (pickled)
+"""
+This file will run clustering for all the individual duplimonte'd angulars we have and produce clustered lists (pickled)
+"""
 
 """
 # Generate arrayinfo, minpar = arrayinfominpar
@@ -25,7 +27,7 @@ if __name__ == '__main__':
     results = pool.map(windows_multiprocessing.do_hdbscan, arrayinfominpars)
     pool.close() """
 
-# The above, but for the full group/data.
+# The above, but for the full group/data. More convenient than dealing with stacking/etc.
 import windows_multiprocessing
 
 arrayinfominpars = []
