@@ -6,18 +6,25 @@ import numpy as np
 import pandas
 import warnings
 
+# Suppress all warnings. Only use this when code is prepared for usage case.
+#warnings.filterwarnings('ignore')
+
 # Modified from TGP2020 utils.hdf5_writer. Windows or Unix compatible. Class holds various HDF5 utilities.
 class hdf5_writer(object):
     def __init__(self, directory, filename):
         self.directory = directory
         self.filename = filename
         self.owd = os.getcwd()
+        self.create()
     # Creates the file if it doesn't exist, does nothing otherwise.
     def create(self):
-        os.chdir(self.directory)
-        file_created = h5py.File(self.filename, 'a')
-        file_created.close()
-        os.chdir(self.owd)
+        try:
+            os.chdir(self.directory)
+            file_created = h5py.File(self.filename, 'a')
+            file_created.close()
+            os.chdir(self.owd)
+        except:
+            pass
     # Returns the ENTIRE FILE TREE of the file
     def info(self):
         os.chdir(self.directory)
