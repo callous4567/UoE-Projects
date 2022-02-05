@@ -217,7 +217,7 @@ class twod_ising(object):
         measurements = int(25e6) # int(20e3)
         max_sweeps = equilibration + measurements + 1
         lx = 50
-        dyn = 'k'
+        dyn = 'g'
         # Check dynamics type. Note: make sure all temps attached here are same as multirun.py.
         if dyn == 'g':
             temps_1 = np.linspace(1, 2, 10)
@@ -739,15 +739,16 @@ class checkpoint(object):
                 sys.stdout.flush()
                 resttime = self.rng.uniform(0.0001, self.delay_max)
                 time.sleep(resttime)
+            print()
         else:
             pass
 
     # User Input Specification
     def user_input(self):
-        self.time_delay("Yōkoso!!! Welcome to this 2D Ising Simulation Suite. "
-                        "You will now be asked for a few parameters. Please give them."
-                        "Please note that the code is a bit optimized for multiple sequential runs (i.e. parallel)"
-                        "Due to this, a one-time-run will incur a @jit compile cost, compared to regular python."
+        self.time_delay("Yōkoso!!! Welcome to this 2D Ising Simulation Suite. \n"
+                        "You will now be asked for a few parameters. Please give them. \n"
+                        "Please note that the code is a bit optimized for multiple sequential runs (i.e. parallel) \n"
+                        "Due to this, a one-time-run will incur a @jit compile cost, compared to regular python. \n"
                         "Now, onto the parameters!!!!")
         print()
         self.time_delay("Grid size. This is a square simulator, so just one integer will suffice.")
@@ -759,6 +760,8 @@ class checkpoint(object):
         if dyn == "g":
             self.time_delay("You said Glauber. Do you want initial spins entirely random? y/n")
             not_up = str(input())
+            if not_up == 'y':
+                not_up = True
         else:
             not_up = False
         self.time_delay("What binrate do you want for the sim? (spacing between animation prints. Code bottleneck.)")
@@ -770,6 +773,14 @@ class checkpoint(object):
 
     # Run
     def run(self):
-        model = twod_ising(*self.user_input())
-        model.run()
+        try:
+            model = twod_ising(*self.user_input())
+            model.run(checkpoint=True)
+        except Exception as e:
+            self.time_delay("An error occurred... \n"
+                            "You probably don't have the correct dependencies. \n"
+                            "If the error regards the existence of LaTex: delete lines 21,22 \n" 
+                            "If the error regards missing packages, please install them.\n")
+            print(e)
 
+checkpoint().run()
