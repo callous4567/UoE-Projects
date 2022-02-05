@@ -1,5 +1,5 @@
 # 2D Ising Model, in Python with Numba
-**Which I assume you know about if you're here, so, let's get to it!**
+See my blog post [here](https://straszaks.co.uk/?p=1364) to see some videos of this code in action on my website. 
 
 If you want to try this code out, download "Example_Prepared_Code.bz" and try running it via
 ```
