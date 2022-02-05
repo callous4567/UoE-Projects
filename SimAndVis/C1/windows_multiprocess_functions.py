@@ -1,21 +1,17 @@
 from twod_ising import twod_ising
-import time
-import numpy as np
+
+# Params for sims
+lx = 50
+equilibration = int(0.25e6)
+measurements = int(25e6)
 
 def twod_run(temp_dynamic):
     temp, dynamic = temp_dynamic
-    model = twod_ising()
-    model.T = temp
-    model.dyn = dynamic
-    model.init_multiprocess()
-    #model.time_delay(("Running {0:.2f} {1}").format(temp_dynamic[0], temp_dynamic[1]))
+    model = twod_ising(lx, temp, dynamic, equilibration, measurements)
     model.main_multi()
+    return 1
 
 def twod_regenerate_averages(temp_dynamic):
     temp, dynamic = temp_dynamic
-    model = twod_ising()
-    model.T = temp
-    model.dyn = dynamic
-    model.init_multiprocess()
-    #model.time_delay(("Running {0:.2f} {1}").format(temp_dynamic[0], temp_dynamic[1]))
+    model = twod_ising(lx, temp, dynamic, equilibration, measurements)
     model.main_multi(run=False)
