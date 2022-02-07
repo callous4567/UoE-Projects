@@ -29,9 +29,9 @@ class xy_ising(object):
     # TODO: make sure the current init is fine. Remember we added input instead of two separate inits for multirun.
     def __init__(self):
         # Initialization parameters.
-        self.lx = 50
+        self.lx = 800
         self.T = 0.2
-        self.binrate = int(25000)  # 1e6 # binrate for animations. Every i'th sweep is selected as frames.
+        self.binrate = int(0.5e6)  # 1e6 # binrate for animations. Every i'th sweep is selected as frames.
         self.rng = np.random.default_rng()
         self.M, self.E = None, None
         self.sweep = 0 # in NUMBER OF FLIPS
@@ -67,11 +67,12 @@ class xy_ising(object):
             os.mkdir(self.imgdir)
         except:
             pass
-        self.temprate = int(20e6)
+        self.temprate = int(50e6)
         self.temprise = 0.5
         self.all_M, self.all_E = None, None
         self.saveattempts = 5
         self.fast = fast_xy(self.lx)
+        self.convolve_radius = 2
 
 
     # High-scale run (no saving) that will output images to imgdir rather than keeping in memory/writing.
@@ -94,7 +95,9 @@ class xy_ising(object):
         t1 = plt.text(1, 1, str(self.sweep), color="white", fontsize=20)
         plt.title(("T = {} M = {} E = {}").format(self.T,self.M,self.E))
         # Compute the divergence field (first order) to start with
-        convolution_kernel = astropy.convolution.Gaussian2DKernel(2, 2, theta=0)
+        convolution_kernel = astropy.convolution.Gaussian2DKernel(self.convolve_radius,
+                                                                  self.convolve_radius,
+                                                                  theta=0)
         div_field = self.fast.divergence_first(self.mat)
         col_field = astropy.convolution.convolve_fft(div_field, kernel=convolution_kernel)
         im = plt.imshow(col_field, cmap='bwr')
