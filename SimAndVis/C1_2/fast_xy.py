@@ -91,4 +91,18 @@ class fast_xy():
                 div_field[i,j] = div
         return div_field
 
-
+    # Compute the angles for all elements of the array
+    def angle(self, mat):
+        angles = np.zeros((self.lx, self.lx))
+        for i in range(self.lx):
+            for j in range(self.lx):
+                vec = mat[i,j]
+                angles[i,j] = np.arctan2(vec[1],vec[0])
+        # reverse the negatives
+        for i in range(self.lx):
+            for j in range(self.lx):
+                if angles[i,j] > 0:
+                    pass
+                else:
+                    angles[i,j] += 2*np.pi
+        return angles
