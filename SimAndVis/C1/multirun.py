@@ -7,7 +7,7 @@ import windows_multiprocess_functions
 import time
 
 time_start = time.time()
-dynamics = 'g'
+dynamics = 'k'
 if dynamics == 'g':
     temps_1 = np.linspace(1, 2, 10)
     temps_2 = np.linspace(2, 2.2, 20)
@@ -30,7 +30,7 @@ results = ["null"]
 # Regularly map/pool :)
 if __name__ == '__main__':
     pool = multiprocessing.Pool(10)
-    results = pool.map(windows_multiprocess_functions.twod_run, zipped)
+    results = pool.map(windows_multiprocess_functions.twod_regenerate_averages, zipped)
     pool.close()
 
 if len(results) == len(temperatures):

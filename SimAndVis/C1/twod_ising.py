@@ -217,7 +217,7 @@ class twod_ising(object):
         measurements = int(25e6) # int(20e3)
         max_sweeps = equilibration + measurements + 1
         lx = 50
-        dyn = 'g'
+        dyn = 'k'
         # Check dynamics type. Note: make sure all temps attached here are same as multirun.py.
         if dyn == 'g':
             temps_1 = np.linspace(1, 2, 10)
@@ -281,8 +281,8 @@ class twod_ising(object):
 
 
         # Dump figure
-        plt.show()
         plt.savefig(dyn + "_multi.png", dpi=600)
+        plt.show()
         # Save the table so that people can have a gander at it.
         writer = hdfutils.hdf5_writer(os.getcwd(), "multirun_data.hdf5")
         writer.write_table(dyn, "results", table)
@@ -783,4 +783,3 @@ class checkpoint(object):
                             "If the error regards missing packages, please install them.\n")
             print(e)
 
-checkpoint().run()

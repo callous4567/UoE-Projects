@@ -216,8 +216,6 @@ class fast_ising():
         chi_true, c_true = (1/num_samples)*(1/T)*(avg_MM - avg_M**2),\
                            (1/num_samples)*(1/T**2)*(avg_EE - avg_E**2)
         # Error estimation for chi and c via the Bootstrap method
-        # Bootstrap error as defined by https://thestatsgeek.com/2013/07/02/the-miracle-of-the-bootstrap/
-        # The error in the notes didn't match up to the error methods online so I just went with these...
         number_of_resamples = 4000
         chi_list, c_list = np.empty(number_of_resamples), \
                            np.empty(number_of_resamples)
@@ -226,7 +224,7 @@ class fast_ising():
             resample = np.random.randint(0, num_samples, num_samples)
             # Grab Magnetism/Energy samples
             Qall_M, Qall_E = all_M[resample], all_E[resample]
-            Qall_MM, Qall_EE = all_M ** 2, all_E ** 2
+            Qall_MM, Qall_EE = Qall_M ** 2, Qall_E ** 2
             # Get averages
             Qavg_M, Qavg_E = np.mean(Qall_M), np.mean(Qall_E)
             Qavg_MM, Qavg_EE = np.mean(Qall_MM), np.mean(Qall_EE)
@@ -236,8 +234,7 @@ class fast_ising():
             # Append
             chi_list[i], c_list[i] = Qchi, Qc
         chi_average, c_average = np.mean(chi_list), np.mean(c_list)
-        boot_chi, boot_c = np.sqrt((1/number_of_resamples)*np.sum((chi_list - chi_average)**2)), \
-                           np.sqrt((1/number_of_resamples)*np.sum((c_list - c_average)**2))
-        chi_error, c_error = boot_chi, boot_c
-        return avg_M, avg_E, avg_M_err, avg_E_err, chi_true, chi_error, c_true, c_error
+        chichi_average, cc_average = np.mean(chi_list**2), np.mean(c_list**2)
+        boot_chi, boot_c = np.sqrt(chichi_average - chi_average**2), np.sqrt(cc_average - c_average**2)
+        return avg_M, avg_E, avg_M_err, avg_E_err, chi_true, boot_chi, c_true, boot_c
 
