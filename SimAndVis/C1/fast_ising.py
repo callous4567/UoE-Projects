@@ -1,7 +1,6 @@
-import numba.types as types
 import numpy as np
-from numba import njit
 from numba.experimental import jitclass
+from numba import types
 
 variable_specification = [
     ('good_luck', types.unicode_type),
@@ -238,3 +237,67 @@ class fast_ising():
         boot_chi, boot_c = np.sqrt(chichi_average - chi_average**2), np.sqrt(cc_average - c_average**2)
         return avg_M, avg_E, avg_M_err, avg_E_err, chi_true, boot_chi, c_true, boot_c
 
+
+    # Cluster version of the Glauber. Note that this will just ignore changes in M and E (lazy.)
+    def fast_clustglauber(self, mat, M, E, T, sweep):
+        # Create a True/False array of spins (for the ones that we decide to flip.) False is unflipped.
+        mark_array = np.zeros((self.lx, self.lx), dtype=types.boolean)
+
+        # Pick a random point to start the cluster (the seed)
+        start = np.random.randint(0, self.lx, 2)
+
+        # Grab the spin state of this
+        clust_spin = mat[start[0], start[1]]
+        # Mark it "to flip" too
+        mark_array[start[0], start[1]] = True
+
+        # Set the flat probability of addition
+        flatprob = 1 - np.exp(-2/T)
+
+        # Set the tree
+        current_centres = [start]
+
+        # If len is zero, then it breaks.
+        while len(current_centres) > 0:
+            # Placeholder for the newly-flipped points we generate below
+            new_centres = []
+
+            # Work each recently-flipped centre in current_centres
+            for centre in current_centres:
+                # Set up centre index
+                i, j = types.int32(centre[0]), types.int32(centre[1])
+                # Grab indices for periodic edges
+                leftrighttopbot_x = np.array([self.pbc(i - 1), self.pbc(i + 1), i, i])
+                leftrighttopbot_y = np.array([j, j, self.pbc(j - 1), self.pbc(j + 1)])
+                # Iterate over each of the edges
+                for ii, jj in zip(leftrighttopbot_x, leftrighttopbot_y):
+                    # Only work if not previously flipped
+                    if mark_array[ii, jj] == False:
+                        # Check whether the spin of the candidate is equal to the spin of the centre
+                        if mat[ii,jj] == clust_spin:
+                            # Generate random number [0,1]
+                            u = np.random.random()
+                            # Decide whether to flip
+                            if flatprob > u:
+                                ## Change the mark to True
+                                mark_array[ii, jj] = True
+                                ## Add this newly-flipped point as a new centre
+                                new_centres.append(np.array([ii, jj]))
+                        # If the spin of the candidate is not, then do not flip it.
+                        else:
+                            pass
+                    else:
+                        pass
+            # Replace the old centres with the new ones
+            current_centres = new_centres
+
+        # Sweep complete.
+        sweep += 1
+
+        # Flip the entire cluster in one fell swoop
+        mat = mat - 2*mark_array*mat
+
+        # Calculate the magnetization and energy of the array
+        M, E = self.fast_magenergy(mat)
+
+        return mat, M, E, T, sweep

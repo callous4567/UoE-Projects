@@ -7,20 +7,15 @@ import windows_multiprocess_functions
 import time
 
 time_start = time.time()
-dynamics = 'k'
+dynamics = 'g'
 if dynamics == 'g':
-    temps_1 = np.linspace(1, 2, 10)
-    temps_2 = np.linspace(2, 2.2, 20)
-    temps_4 = np.linspace(2.2, 2.4, 40)
-    temps_5 = np.linspace(2.4, 2.5, 10)
-    temps_6 = np.linspace(2.5, 3.5, 10)
-    temperatures = np.concatenate([temps_1, temps_2, temps_4, temps_5, temps_6])
+    temperatures = np.linspace(1, 3, 60)
     dynamics = [dynamics for T in temperatures]
 if dynamics == 'k':
-    temps_1 = np.linspace(0.1, 3, 30)
-    temps_2 = np.linspace(-10, 0, 100)
-    temps_2 = np.array([10**x for x in temps_2])
-    temperatures = np.concatenate([temps_1, temps_2]) # , temps_2, temps_4, temps_5, temps_6])
+    temperatures = np.linspace(2, 3, 30)
+    #temps_2 = np.array([10**x for x in temps_2])
+    #temperatures = np.linspace(0.1, 2, 60)
+    #temperatures = np.concatenate([temps_1, temps_2]) # , temps_2, temps_4, temps_5, temps_6])
     dynamics = [dynamics for T in temperatures]
 zipped = list(zip(temperatures, dynamics))
 

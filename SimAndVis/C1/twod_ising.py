@@ -52,7 +52,7 @@ class twod_ising(object):
                 self.binrate = binrate
             self.equilibration = equilibration # int(0.25e6) # int(4000e6) # in NUMBER OF FLIPS
             self.measurements = measurements # int(25e6) # in NUMBER OF FLIPS
-            self.autocorrelation_length = 25000
+            self.autocorrelation_length = 25
             # Derived self parameters.
             self.rng = np.random.default_rng()
             self.M, self.E = None, None
@@ -72,7 +72,18 @@ class twod_ising(object):
                 else:
                     self.mat = np.ones(shape=(self.lx, self.lx)) # all-up spin matrix
             if self.dyn == "k": # kawasaki dynamic
-                self.mat = self.rng.choice([-1, 1], size=(self.lx, self.lx)) # random spin matrix
+                # Totally random Kawasaki State (not_up == True)
+                if not_up == True:
+                    self.mat = self.rng.choice([-1, 1], size=(self.lx, self.lx)) # random spin matrix
+                # Ground state (half and half, perfectly down the middle)
+                else:
+                    # Create an "all_up" state
+                    self.mat = np.ones((self.lx, self.lx))
+                    # Flip all the ones less than self.lx/2 to negative
+                    for i in range(self.lx):
+                        for j in range(self.lx):
+                            if j <= int(self.lx/2):
+                                self.mat[i,j] -= int(2)
             imgdir = self.directory + "\\" + "img"
             try:
                 os.mkdir(imgdir)
@@ -177,7 +188,7 @@ class twod_ising(object):
         # Run Sim
         if self.dyn == 'g':
             while self.sweep < self.max_sweeps:
-                self.fast_glauber()
+                self.fast_clustglauber()
                 all_M.append(self.M), all_E.append(self.E)
         # For Kawasaki scenario
         if self.dyn == 'k':
@@ -213,11 +224,11 @@ class twod_ising(object):
     # Produce graphs for multiprocessed runs selected.
     def multigraph(self):
         # Same "settings" as used by Multirun (dynamics are "k" or "g" obviously.)
-        equilibration = int(0.25e6) # int(2e3)
-        measurements = int(25e6) # int(20e3)
+        equilibration = int(2.5e3) # int(2e3)
+        measurements = int(25e3) # int(20e3)
         max_sweeps = equilibration + measurements + 1
         lx = 50
-        dyn = 'k'
+        dyn = 'g'
         # Check dynamics type. Note: make sure all temps attached here are same as multirun.py.
         if dyn == 'g':
             temps_1 = np.linspace(1, 2, 10)
@@ -226,11 +237,12 @@ class twod_ising(object):
             temps_5 = np.linspace(2.4, 2.5, 10)
             temps_6 = np.linspace(2.5, 3.5, 10)
             temperatures = np.concatenate([temps_1, temps_2, temps_4, temps_5, temps_6])
+            # Overwrite
+            temperatures = np.linspace(1, 3, 60)
         if dyn == 'k':
-            temps_1 = np.linspace(0.1, 3, 30)
-            temps_2 = np.linspace(-10, 0, 100)
-            temps_2 = np.array([10 ** x for x in temps_2])
-            temperatures = np.concatenate([temps_1, temps_2])  # , temps_2, temps_4, temps_5, temps_6])
+            temps_1 = np.linspace(2, 3, 30)
+            temps_3 = np.linspace(0.1, 2, 60)
+            temperatures = np.concatenate([temps_1, temps_3])  # , temps_2, temps_4, temps_5, temps_6])
         distincts = [("{0}_{1:.4f}_{2}_{3}").format(lx, T, dyn, max_sweeps) for T in temperatures]
         imgdirs = [os.getcwd() + "\\" + "img" + "\\" + distinct for distinct in distincts]
         files = [imgdir + "\\" + "results.txt" for imgdir in imgdirs]
@@ -277,7 +289,7 @@ class twod_ising(object):
 
                     if table_index == 3:
                         if dyn == 'k':
-                            ax.set(ylim=[0, 50])
+                            ax.set(ylim=[0, 10])
 
 
         # Dump figure
@@ -316,7 +328,7 @@ class twod_ising(object):
         # Run sim
         if self.dyn == "g":
             while self.sweep < self.max_sweeps:
-                self.fast_glauber()
+                self.fast_clustglauber()
                 if self.sweep % self.binrate == 0:
                     im.set_array(self.mat)
                     t1.set_text(str(self.sweep))
@@ -397,6 +409,14 @@ class twod_ising(object):
                                                                                        self.T,
                                                                                        self.sweep)
 
+    # Wolff Algorithm
+    def fast_clustglauber(self):
+        self.mat, self.M, self.E, self.T, self.sweep = self.fast.fast_clustglauber(self.mat,
+                                                                                       self.M,
+                                                                                       self.E,
+                                                                                       self.T,
+                                                                                       self.sweep)
+
     # Kawasaki, but using fast_ising
     def fast_kawasaki(self):
         self.mat, self.M, self.E, self.T, self.sweep = self.fast.fast_kawasaki(self.mat,
@@ -415,7 +435,7 @@ class twod_ising(object):
         chi_true, \
         chi_error, \
         c_true, \
-        c_error = self.fast.averages_errors(self.all_M,
+        c_error = self.fast.averages_errors(np.abs(self.all_M),
                                         self.all_E,
                                         self.T,
                                         self.equilibration,
@@ -661,10 +681,9 @@ class twod_ising(object):
     # TODO: Deprecated. See "sweeps=flips" info. See "self.save" info.
     def autocorrelation(self):
         # Load the energy/magnetisation
-        all_M, all_E = list(self.data['all_M']), list(self.data['all_E'])
+        all_M, all_E = self.all_M, self.all_E
         # Clip to measurements
-        all_M, all_E = all_M[self.equilibration:self.equilibration + self.measurements],\
-                       all_E[self.equilibration:self.equilibration + self.measurements]
+        all_M = all_M[self.equilibration:self.equilibration + self.measurements]
         # Generate a correlation given
         pandas.plotting.autocorrelation_plot(all_M)
         plt.savefig("autocorrelation_" + self.distinct + ".png")
@@ -764,6 +783,13 @@ class checkpoint(object):
                 not_up = True
         else:
             not_up = False
+        if dyn == "k":
+            self.time_delay("You said Kawasaki. Do you want an initial random state? y/n")
+            not_up = str(input())
+            if not_up == 'y':
+                not_up = True
+            else:
+                not_up = False
         self.time_delay("What binrate do you want for the sim? (spacing between animation prints. Code bottleneck.)")
         binrate = int(input())
         print()
