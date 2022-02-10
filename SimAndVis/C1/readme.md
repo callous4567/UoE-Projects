@@ -1,4 +1,4 @@
-# 2D Ising Model, in Python with Numba
+# 2D Ising Model, in Python with Numba, with options for Cluster MCMC
 See my blog post [here](https://straszaks.co.uk/?p=1364) to see some videos of this code in action on my website. 
 
 If you want to try this code out, download "Example_Prepared_Code.bz" and try running it via
