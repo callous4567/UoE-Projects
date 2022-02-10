@@ -5,7 +5,12 @@ from numba import types
 variable_specification = [
     ('good_luck', types.unicode_type),
     ('lx', types.int32),
-    ('mat', types.float32[:,:,:])
+    ('mat', types.float32[:,:,:]),
+    ('leftrighttopbot_x', types.int32),
+    ('leftrighttopbot_y', types.int32),
+    ('mark_array', types.boolean),
+    ('ii', types.int32),
+    ('jj', types.int32)
 ]
 @jitclass(variable_specification)
 class fast_xy():
@@ -106,3 +111,82 @@ class fast_xy():
                 else:
                     angles[i,j] += 2*np.pi
         return angles
+
+    # Cluster version of the Glauber. Note that this will just ignore changes in M and E (lazy.)
+    def fast_clustglauber(self, mat, T, sweep):
+        # Create a True/False array of spins (for the ones that we decide to flip.) False is unflipped.
+        mark_array = np.zeros((self.lx, self.lx), dtype=types.boolean)
+
+        # Pick a random point to start the cluster (the seed)
+        start = np.random.randint(0, self.lx, 2)
+        i, j = int(start[0]), int(start[1])
+
+        # Generate a random flip for this cluster
+        rand = np.array([np.random.normal(), np.random.normal()])
+        randmag = np.sqrt(rand[0]**2 + rand[1]**2)
+        randspin = rand/randmag
+
+        # Take the random start point, and flip it (S -> S - 2(S*r)r...)
+        mat[i, j] -= 2 * np.dot(mat[i, j], randspin) * randspin
+        mark_array[i, j] = True
+
+        # Set the tree
+        current_centres = [start]
+        # While the number of centres being examined is non-zero
+        """
+        For each centre in current_centres:
+            Go to each centre i 
+            Check the four surrounding points j: if they have been flipped before, do not work them. 
+            Decide whether to flip them according to the Wolff probability (see papers)
+            If they flip, append to new_centres as points to check on the next loop (expand the tree) 
+            If they flip, keep track with mark that they've flipped 
+        Once this is done, set current_centres to new_centres 
+        If the length of new_centres is zero, break the loop. Else continue. 
+
+        """
+        # If len is zero, then it breaks.
+        while len(current_centres) > 0:
+            # Placeholder for the newly-flipped points we generate below
+            new_centres = []
+
+            # Work each recently-flipped centre in current_centres
+            for centre in current_centres:
+                # Set up centre index
+                i, j = types.int32(centre[0]), types.int32(centre[1])
+                # Grab spin for centre
+                centre_spin = mat[i, j]
+                # Grab indices for periodic edges
+                leftrighttopbot_x = np.array([self.pbc(i - 1), self.pbc(i + 1), i, i])
+                leftrighttopbot_y = np.array([j, j, self.pbc(j - 1), self.pbc(j + 1)])
+
+                # Iterate over each of them
+                for ii, jj in zip(leftrighttopbot_x, leftrighttopbot_y):
+                    # Only work if not previously flipped
+                    if mark_array[ii, jj] == False:
+                        # Grab the absolute of the change in magnetization (should be negative.)
+                        mag_change = 2 * np.dot(mat[ii, jj], randspin) * randspin
+                        new_mag = mat[ii,jj] - mag_change
+                        # Grab the energy change respective to the centre point (should be negative: cancels to +.)
+                        E_change = 1 * np.dot(mag_change, centre_spin)
+                        # Generate probability
+                        probability = 1 - np.exp(np.min(np.array([0,
+                                                                  -1 * E_change / T])))
+                        # Generate random number [0,1]
+                        u = np.random.random()
+
+                        # Decide whether to flip
+                        if probability > u:
+                            # Flip it in the array
+                            mat[ii, jj] -= new_mag
+                            ## Change the mark to True
+                            mark_array[ii, jj] = True
+                            ## Add this newly-flipped point as a new centre
+                            new_centres.append(np.array([ii, jj]))
+                    else:
+                        pass
+            # Replace the old centres with the new ones
+            current_centres = new_centres
+
+        # Sweep complete.
+        sweep += 1
+        return mat, T, sweep
