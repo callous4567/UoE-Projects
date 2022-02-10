@@ -8,7 +8,7 @@ python3 twod_ising.py
 after you've extracted it. Keep an eye on the console to answer some questions it'll ask you, defining the simulation run. _This won't produce a save! Only do a nice animation for the run!_
 ## fast_ising.py
 Contains the Numba code. This will allow you to do fast energy calculations
-alongside nice and fast Glauber/Kawasaki steps. 
+alongside nice and fast Glauber/Kawasaki steps. Includes support for JIT Wolff Algorithm Implementation.
 
 _Note that there there is unexpected behaviour with the method "fast_ising.kawaglauber" which will
 not function as intended- the reason is Numba-related and a request will be filed eventually._
@@ -28,7 +28,7 @@ and in general is the model.
 
 If you want to do an example run, take a look at the class **checkpoint** within this, specifically the method **run**.
 
-
+Note: There is added functionality to use the Wolff Algorithm, to allow for Cluster Monte Carlo.
 ## windows_multiprocess_functions.py 
 
 Has the functions that multirun.py needs to correctly run. See this, if looking at multirun.
