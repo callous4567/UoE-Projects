@@ -1,5 +1,6 @@
 # 2D XY Ising Model, in Python with Numba
-See [here](https://www.youtube.com/watch?v=5ZzX12x073k) to get a video of it in action, demonstrating formation of low-temperature vortices (indicative of the KT transition, with a first-order gaussian-smoothed divergence colourmap.
+See [here](https://www.youtube.com/watch?v=5ZzX12x073k) to get a video of it in action, demonstrating formation of low-temperature vortices (indicative of the KT transition, with a first-order gaussian-smoothed divergence colourmap. Click [here](https://www.youtube.com/watch?v=8lncCFxXaWM) for a VERY long run, showing collapse of vortices. Critical slowdown is a problem: I have included a Wolff-algorithm-based pseudocode, which you could finish, though it does not show vortices sadly and I have no intention of testing it, given this is ungraded work.
+
 See [here](https://www.youtube.com/watch?v=r5w7IQqBi7Q) to get a video of it in action with vortices illustrated with a phase colourmap (0,2pi.) 
 
 ## fast_xy.py
