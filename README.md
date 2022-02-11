@@ -12,12 +12,8 @@ This includes code for the:
 
 ### 4th Year Telescope Group Project (Star Clusters Project) 
 
-### 5th Year Computational Astrophysics, Python Analysis and Visualization (tbd) and DAML (tbd) courses, alongside MPhys (tbd, data redacted) 
+### 5th Year Computational Astrophysics, Python Modelling and Visualization (tbd) courses, alongside MPhys (tbd, data redacted) 
 *Mphys is "master-streams" and is currently WIP- note that if you use this code, you should make sure to give me credit in some part... :/* 
-
-### 5th Year MSc Project, master-streams at the moment. TBD.
-
-### 5th Year Modelling and Visualization, SimAndVis, with various checkpoints. TBD. 
 
 Disclaimer: a lot of it is dirty/as-it-was-after-ending-the-work
 What student cleans up their code after the fact? Not this one.
