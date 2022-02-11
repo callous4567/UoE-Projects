@@ -5,7 +5,8 @@ If you want to try this code out, download "Example_Prepared_Code.bz" and try ru
 ```
 python3 twod_ising.py 
 ```
-after you've extracted it. Keep an eye on the console to answer some questions it'll ask you, defining the simulation run. _This won't produce a save! Only do a nice animation for the run!_
+after you've extracted it. Keep an eye on the console to answer some questions it'll ask you, defining the simulation run. _This won't produce a save! Only do a nice animation for the run!_ _This code is a bit old and does not have the cluster algorithms, and is a bit slower._
+
 ## fast_ising.py
 Contains the Numba code. This will allow you to do fast energy calculations
 alongside nice and fast Glauber/Kawasaki steps. Includes support for JIT Wolff Algorithm Implementation.
@@ -22,13 +23,12 @@ Example file showing how to leverage multiprocessing to generate results for the
 produce graphs of averages against temperature, etc.
 
 ## twod_ising.py 
-
 Main file to use, which contains the bulk of the code. This runs the model, handles the model, graphs the model,
 and in general is the model. 
 
 If you want to do an example run, take a look at the class **checkpoint** within this, specifically the method **run**.
 
-Note: There is added functionality to use the Wolff Algorithm, to allow for Cluster Monte Carlo.
-## windows_multiprocess_functions.py 
+Note: There is added functionality to use the Wolff Algorithm, to allow for Cluster Monte Carlo. This has to be manually specified, though, and you will have to change a few lines of code to drag it in from fast_ising. 
 
+## windows_multiprocess_functions.py 
 Has the functions that multirun.py needs to correctly run. See this, if looking at multirun.
