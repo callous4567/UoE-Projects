@@ -5,7 +5,7 @@ If you want to try this code out, download "Example_Prepared_Code.bz" and try ru
 ```
 python3 twod_ising.py 
 ```
-after you've extracted it. Keep an eye on the console to answer some questions it'll ask you, defining the simulation run. _This won't produce a save! Only do a nice animation for the run!_ _This code is a bit old and does not have the cluster algorithms, and is a bit slower._
+after you've extracted it. Keep an eye on the console to answer some questions it'll ask you, defining the simulation run. _This won't produce a save! Only do a nice animation for the run!_ _This code is a bit old and does not have the cluster algorithms, and is a bit slower. It also has errors in the error calculations- these are fixed with later commits and will not impart the animation functionality this test file is intended to provide._
 
 ## fast_ising.py
 Contains the Numba code. This will allow you to do fast energy calculations
