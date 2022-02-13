@@ -36,6 +36,8 @@ add .txt for pure [l1,l2,l3] vector list
 
 duplimonte_number = 200
 duplimonte_saveids = [("L_{}").format(d) for d in [str(d) for d in range(duplimonte_number)]]
+duplimonte_L4D_saveids = [("L4D_{}").format(d) for d in [str(d) for d in range(duplimonte_number)]]
+duplimonte_LE_saveids = [("LE_{}").format(d) for d in [str(d) for d in range(duplimonte_number)]]
 
 # Set minpars for each group for cluster_duplimonte. minpar is SIZE,SAMPLES.
 bhb_minpar = [9,7]
@@ -43,6 +45,8 @@ gcs_minpar = [5,5]
 kgiant_minpar = [8,12]
 lamostk_minpar = [8,12]
 fulldata_minpar = [15,15]
+fulldata_minpar_L4D = fulldata_minpar
+fulldata_minpar_LE = fulldata_minpar
 minpars_allgroups = [bhb_minpar, gcs_minpar, kgiant_minpar, lamostk_minpar]
 
 

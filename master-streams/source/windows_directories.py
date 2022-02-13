@@ -8,4 +8,4 @@ sourcedir = rootdir + "\\source"
 imgdir = rootdir + "\\img"
 asciidir = rootdir + "\\ascii"
 duplimontedir = datadir + "\\duplimonte"
-
+clusterdir = datadir + "\\clustered"

@@ -1,3 +1,4 @@
+import windows_directories
 from windows_directories import imgdir, datadir, duplimontedir
 import ascii_info
 import os
@@ -5,7 +6,10 @@ import os
 # Generic tools to build directories
 class dirbuilder(object):
     def __init__(self):
-        self.null = "null"
+        self.datimgdir()
+        self.duplimonte()
+        self.duplimonte_kmeanshtmldir()
+        self.clustdir()
 
     # Build directory for building image/data directories
     def datimgdir(self):
@@ -52,5 +56,15 @@ class dirbuilder(object):
         except:
             pass
 
-dirbuilder().duplimonte_kmeanshtmldir()
-dirbuilder().duplimonte()
+    # Build cluster dir
+    def clustdir(self):
+        try:
+            os.mkdir(windows_directories.clusterdir)
+        except:
+            pass
+        try:
+            os.mkdir(imgdir + "\\clustered")
+        except:
+            pass
+
+dirbuilder()

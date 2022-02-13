@@ -45,14 +45,15 @@ class dataframes_to_tables():
         pandasets = [ascii_info.panda_raw for group in groups]
         writer = hdfutils.hdf5_writer(windows_directories.datadir, ascii_info.asciiname)
         # Some housework: convert to Astropy Table, and overwrite the astropy source.
-        # NOTE: You can put ndarrays inside astropy tables.
         for group, astropyset, pandaset in zip(groups, astropysets, pandasets):
             df = writer.read_df(group, pandaset)
+            # Drop the various arrays we want to keep inside the dataframe
             df = df.drop(columns="covtrix")
             df = df.drop(columns="vec_L")
             df = df.drop(columns="covtrix2")
             df = df.drop(columns="vec_4d")
+            df = df.drop(columns="covtrix3")
+            df = df.drop(columns="vec_4dLE")
             table = Table.from_pandas(df)
             writer.write_table(group, astropyset, table)
-
 

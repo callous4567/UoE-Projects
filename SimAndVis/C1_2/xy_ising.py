@@ -2,10 +2,11 @@ import time
 
 import astropy.convolution
 import matplotlib
+import numba.core.types
 from matplotlib import rc, cm
 import os
 from matplotlib.patches import Patch
-from fast_xy import fast_xy
+from fast_xy import fast_xy, fast_glauber, fast_clustglauber
 import hdfutils
 import numpy as np
 from matplotlib.colors import LinearSegmentedColormap, ListedColormap
@@ -33,13 +34,13 @@ class xy_ising(object):
     # TODO: make sure the current init is fine. Remember we added input instead of two separate inits for multirun.
     def __init__(self):
         # Initialization parameters.
-        self.lx = 512
-        self.T = 0.00001
-        self.binrate = int(1e6)  # 1e6 # binrate for animations. Every i'th sweep is selected as frames.
+        self.lx = 128
+        self.T = 0.9
+        self.binrate = 1  # 1e6 # binrate for animations. Every i'th sweep is selected as frames.
         self.rng = np.random.default_rng()
         self.M, self.E = None, None
         self.sweep = 0 # in NUMBER OF FLIPS
-        self.max_sweeps = int(1200e6)
+        self.max_sweeps = int(601e6)
         self.directory = os.getcwd()
         self.filename = "datafile.hdf5"
         self.set = "data"
@@ -71,7 +72,7 @@ class xy_ising(object):
             os.mkdir(self.imgdir)
         except:
             pass
-        self.temprate = int(120e6)
+        self.temprate = int(60e6)
         self.temprise = 0.1
         self.all_M, self.all_E = None, None
         self.saveattempts = 5
@@ -94,13 +95,8 @@ class xy_ising(object):
         # Set up image plot
         plt.xlim([0, self.lx-1])
         plt.ylim([0, self.lx - 1])
-        # Create a fun colourmap
-        cmap_left = plt.cm.binary(np.linspace(0, 1, 128))
-        cmap_right = plt.cm.binary.reversed()(np.linspace(0, 1, 128))
-        stacked = np.vstack((cmap_left, cmap_right))
-        cmap = LinearSegmentedColormap.from_list('mymap', stacked)
         # Set up the X,Y coordinates for each and every point in our array
-        #ax = plt.quiver(self.mat[:,:,0], self.mat[:,:,1], headlength=16, scale=32, headwidth=8)
+        #ax = plt.quiver(self.mat[:,:,0], self.mat[:,:,1], headlength=16, scale=128, headwidth=8)
         t1 = plt.text(1, 1, str(self.sweep), color="white", fontsize=20)
         plt.title(("T = {} M = {} E = {}").format(self.T,self.M,self.E))
         # Compute the divergence field (first order) to start with
@@ -110,14 +106,14 @@ class xy_ising(object):
         #div_field = self.fast.divergence_first(self.mat)
         #col_field = astropy.convolution.convolve_fft(div_field, kernel=convolution_kernel)
         col_field = self.fast.angle(self.mat)
-        im = plt.imshow(col_field, cmap=cmap)#'bwr')
+        im = plt.imshow(col_field, cmap='binary', interpolation='lanczos')#'bwr')
         plt.colorbar(label="Phase")
 
         # Preliminary Save
         plt.savefig(self.imgdir + "\\" + str(self.sweep) + ".png", dpi=300)
         # Run sim
         while self.sweep < self.max_sweeps:
-            self.fast_glauber()
+            self.fast_clustglauber()
             if self.sweep % self.binrate == 0:
                 #ax.set_UVC(self.mat[:,:,0], self.mat[:,:,1])
                 t1.set_text(str(self.sweep))
@@ -128,7 +124,7 @@ class xy_ising(object):
                 im.set_array(col_field)
                 if self.sweep % self.temprate == 0:
                     self.T += self.temprise
-                plt.savefig(self.imgdir + "\\" + str(self.sweep) + ".png", dpi=300)
+                plt.savefig(self.imgdir + "\\" + str(self.sweep) + ".png", dpi=300, block=False)
     # High-scale run (no saving) that will output images to imgdir rather than keeping in memory/writing.
 
     """
@@ -150,7 +146,7 @@ class xy_ising(object):
         # Set up the X,Y coordinates for each and every point in our array
         ax = plt.streamplot(x, y, self.mat[:,:,0], self.mat[:,:,1], color='black', density=self.lx/30)
         t1 = plt.text(1, 1, str(self.sweep), color="white", fontsize=20)
-        plt.title(("T = {} M = {} E = {}").format(self.T,self.M,self.E))
+        plt.title(("T = {}").format(self.T))
 
         # Preliminary Save
         plt.savefig(self.imgdir + "\\" + str(self.sweep) + ".png", dpi=300)
@@ -161,23 +157,33 @@ class xy_ising(object):
                 plt.cla()
                 ax = plt.streamplot(x, y, self.mat[:, :, 0], self.mat[:, :, 1], color='black', density=self.lx / 30)
                 t1.set_text(str(self.sweep))
-                plt.title(("T = {} M = {} E = {}").format(self.T, self.M, self.E))
+                plt.title(("T = {}").format(self.T))
                 if self.sweep % self.temprate == 0:
                     self.T += self.temprise
                 plt.savefig(self.imgdir + "\\" + str(self.sweep) + ".png", dpi=300)
+
     # Glauber, but using fast_ising.
     def fast_glauber(self):
-        self.mat, self.M, self.E, self.T, self.sweep = self.fast.fast_glauber(self.mat,
-                                                                              self.M,
-                                                                              self.E,
-                                                                              self.T,
-                                                                              self.sweep)
+        self.mat, self.M, self.E, self.T, self.sweep = self.fast.fast_glauber(self.mat, self.M, self.E,
+                                                                              self.T, self.sweep)
+
+    # Glauber, but using fast_ising. Clustered.
+    def fast_clustglauber(self):
+        self.mat, self.M, self.E, self.T, self.sweep = self.fast.fast_clustglauber(self.mat, self.M, self.E,
+                                                                                   self.T,self.sweep)
+
+    # Testing fastmath
+    def fast_glauber_fastmath(self):
+        self.mat, self.M, self.E, self.T, self.sweep = fast_glauber(self.lx, self.mat, self.M, self.E,
+                                                                              self.T, self.sweep)
+
+    # Glauber, but using fast_ising. Clustered.
+    def fast_clustglauber_fastmath(self):
+        self.mat, self.M, self.E, self.T, self.sweep = fast_clustglauber(self.lx, self.mat, self.M, self.E,
+                                                                                   self.T,self.sweep)
 
 uwu = xy_ising()
 uwu.run_high()
-
-
-
 
 
 

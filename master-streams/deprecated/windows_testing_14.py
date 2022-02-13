@@ -16,19 +16,15 @@ import matplotlib.pyplot as plt
 import mpl_scatter_density # adds projection='scatter_density'
 from scipy.spatial import cKDTree
 
+"""
 panda = hdfutils.hdf5_writer(windows_directories.datadir,
                              ascii_info.asciiname).read_df(ascii_info.fullgroup,
                                                            ascii_info.panda_raw)
 table = hdfutils.hdf5_writer(windows_directories.datadir,
                             ascii_info.asciiname).read_table(ascii_info.fullgroup,
-                                                             ascii_info.set_raw)
-
-table2 = Table(names=table.columns)
-table2.add_row(table[0])
+                                                             ascii_info.set_raw) """
 
 
-xs = table['circ']
-ys = table['Lz']
 
 
 #energistics.energistics_manual().pot_eval(table)
@@ -83,27 +79,3 @@ table = hdfutils.hdf5_writer(windows_directories.datadir,
 
 graphutils.spec_graph().sofie(table)
 
-"""
-axes_xy = [["Lz","E"], ["Lz", "L"], ["circ", "Lz"],["L", "E"], ["circ", "L"], ["circ", "E"]]
-for combo in axes_xy:
-    print(combo)
-    xs = table[combo[0]]
-    ys = table[combo[1]]
-
-
-    cmap = cm.get_cmap("hot")
-    cmap.set_under('w')
-    fig = plt.figure()
-    ax = fig.add_subplot(1, 1, 1, projection='scatter_density')
-    axis = ax.scatter_density(xs, ys, cmap=cmap, vmin=.01, vmax=8)
-    #ax.set(xlim=[-0.1,0.1],
-    #       ylim=[-1000,1000])
-    fig.colorbar(axis, label='log density of stars')
-
-    ax.set(xlim=[-1,1],
-           ylim=[-10000,10000])
-    ax.set(xlabel=r'$\eta$',
-           ylabel="Lz")
-
-    plt.savefig(windows_directories.imgdir + "\\testpng.png", dpi=1000)
-    plt.show()  """

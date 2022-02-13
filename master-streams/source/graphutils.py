@@ -316,6 +316,29 @@ class threed_graph(object):
         if browser == True:
             fig.show()
 
+    # Except it takes arrays. Savedexdir here should be the directory\\savename
+    def xmeans_L_array(self, array, clusterdata, savedexdir, browser, outliers=False):
+        if outliers == False:
+            outlier_index = np.where(clusterdata == -1)[0]
+            array = np.delete(array, outlier_index, axis=0)
+            clusterdata = np.delete(clusterdata, outlier_index, axis=0)
+            print(len(array), len(clusterdata))
+
+        # Need arrays. Make sure.
+        if type(array) != "numpy.ndarray":
+            array = np.array(array)
+        if type(clusterdata) != "numpy.ndarray":
+            clusterdata = np.array(clusterdata)
+
+        x,y,z = array.T
+
+        fig = px.scatter_3d(x=x, y=y, z=z, color=clusterdata)
+        if savedexdir != False :
+            save_loc = windows_directories.imgdir + "\\" + savedexdir + ".html"
+            fig.write_html(save_loc)
+        if browser == True:
+            fig.show()
+
     # Given a set of theta,phi plot on the unit sphere in 3D for browser. "Colours" are optional.
     def unitsphere(self, thetas, phis, colours):
         pos = lambda theta, phi: np.array([np.sin(theta)*np.cos(phi),
@@ -341,8 +364,33 @@ class threed_graph(object):
         fig.show()
 
     # Except it takes arrays. Savedexdir here should be the directory\\savename
-    def kmeans_L_array(self, array, clusterdata, savedexdir, browser):
+    def kmeans_L_array(self, array, clusterdata, savedexdir, browser, outliers=False):
+        # Need arrays. Make sure.
+        if type(array) != "numpy.ndarray":
+            array = np.array(array)
+        if type(clusterdata) != "numpy.ndarray":
+            clusterdata = np.array(clusterdata)
+
+        # Verify if array is only Lx Ly Lz or if it also energy, and if so, then clip to just angular momentum.
+        if len(array[0]) > 3:
+            array = array.T
+            array = array[0:3]
+            array = array.T
+        else:
+            pass
+
+        # Decide if you want to keep or remove the noise.
+        if outliers == False:
+            outlier_index = np.where(clusterdata == -1)[0]
+            array = np.delete(array, outlier_index, axis=0)
+            clusterdata = np.delete(clusterdata, outlier_index, axis=0)
+        else:
+            # Limit to the viewing region
+            array_clip_indices = galcentricutils.cluster3d().getCuboid(array)
+            array, clusterdata = array[array_clip_indices], clusterdata[array_clip_indices]
+
         x,y,z = array.T
+
         fig = px.scatter_3d(x=x, y=y, z=z, color=clusterdata)
         if savedexdir != False :
             save_loc = windows_directories.imgdir + "\\" + savedexdir + ".html"
@@ -352,7 +400,7 @@ class threed_graph(object):
 
     # Given two clusterings [data1,data2] and label sets [labels1,labels2] plot both
     # Shifts the 2nd labelling by 16 for colours.
-    def kmeans_L_array_pair(self, arrays, clusterdatas, savedexdir, browser, outliers=False):
+    def kmeans_L_array_pair(self, arrays, clusterdatas, savedexdir=False, browser=False, outliers=False):
         # If outliers=False, then go and remove all (-1) elements from both arrays.
         if outliers == False:
             for num, clusterdata in enumerate(clusterdatas):
@@ -622,10 +670,17 @@ class spec_graph(object):
             images.append(image)
             plt.savefig(image, dpi=300)
 
+
         # Clip the images together, now.
         # https://stackoverflow.com/questions/30227466/combine-several-images-horizontally-with-python
         list_im = images
         imgs = [PIL.Image.open(i) for i in list_im]
         grid = self.image_grid(imgs, rows=2, cols=3)
-        grid.save('Trifecta.jpg')
+        grid.save(windows_directories.imgdir + "\\" + 'sixplot.jpg')
+        for image in list_im:
+            try:
+                os.remove(image)
+            except:
+                print("Failed removing image in graphtuils/sofie", image)
+                time.sleep(9999999999)
 

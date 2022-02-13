@@ -1,3 +1,4 @@
+import copy
 import pickle
 import time
 import astropy
@@ -8,9 +9,11 @@ from astropy.stats import sigma_clipped_stats
 from astropy.table import Table
 from matplotlib import pyplot as plt
 from numpy.random import bit_generator
+from scipy.optimize import linear_sum_assignment
 from sklearn.metrics.cluster import contingency_matrix
 from sympy import *
 import math
+import seaborn as sns
 import ascii_info
 import energistics
 import graphutils
@@ -219,6 +222,7 @@ class galconversion(object):
         # Modify and save table.
         table['x'],table['y'],table['z'],table['vx'],table['vy'],table['vz'] = x_list,y_list,z_list,\
                                                                                vx_list,vy_list,vz_list
+
         return table
 
     # Single point GAL to GALCENT. [X,Y,Z,VX,VY,VZ]
@@ -585,8 +589,8 @@ class monte_angular(object):
         astrotable = angular().get_momentum(astrotable)
 
         # Generate the deviations for each Monte'd point
-        Lx,Ly,Lz = astrotable['Lx'],astrotable['Ly'],astrotable['Lz']
-        L = np.array([Lx, Ly, Lz]).T
+        Lx,Ly,Lz = astrotable['Lx'],astrotable['Ly'],astrotable['Lz'] # list representation
+        L = np.array([Lx, Ly, Lz]).T # get vector representation
         L_dev = L - vec_L # difference from mean, vector representation
         L_dev = L_dev.T # list representation
 
@@ -608,15 +612,14 @@ class monte_angular(object):
         E_mean = np.mean(table['E'])
         circ_mean = np.mean(table['circ'])
         L_mag = np.array([np.linalg.norm(d) for d in L])
-        L_mean = np.mean(L_mag)
-        bound_or_not = table['bound']
+        L_mean = np.linalg.norm(vec_L)
+
 
         # Generate Deviations
         L_mag_dev = L_mag - L_mean
-        Lz_dev = table['Lz'] - np.mean(table['Lz'])
         E_dev = table['E'] - E_mean
         circ_dev = table['circ'] - circ_mean
-        deviation_vector = [L_mag_dev,Lz_dev,E_dev,circ_dev]
+        deviation_vector = [L_mag_dev,L_dev[2],E_dev,circ_dev]
 
         # Generate second Covariance Matrix, FOR 4D ABS(L), LZ, E, CIRC CLUSTERING!
         cov2 = np.zeros(shape=(4, 4))
@@ -624,11 +627,8 @@ class monte_angular(object):
             for j in range(4):
                 cov2[i,j] = np.mean(deviation_vector[i]*deviation_vector[j], axis=0)
 
-        # Since we have vec_L, get a vector with these four variables, too.
-        table2 = Table(names=table.columns)
-        table2.add_row(table[0])
-        table2 = orbi.orbilarity(table2)
-        vec_4d = np.array([table2['L'][0], table2['Lz'][0], table2['E'][0], table2['circ'][0]])
+        # Since we have vec_L, get a vector with these four variables, too (judged as the mean.)
+        vec_4d = np.array([L_mean, vec_L[2], E_mean, circ_mean])
 
         # Get the standard deviations FOR 4D ABS(L), LZ, E, CIRC CLUSTERING!
         stdevs2 = []
@@ -636,58 +636,86 @@ class monte_angular(object):
             dev_i = math.sqrt(cov2[i,i])
             stdevs2.append(dev_i)
 
+        # Jorge also wants it for [Lx, Ly, Lz, E]
+        cov3 = np.zeros(shape=(4, 4))
+        deviation_vector = [L_dev[0], L_dev[1], L_dev[2], E_dev]
+        vec_LE = [vec_L[0], vec_L[1], vec_L[2], E_mean]
+        for i in range(4):
+            for j in range(4):
+                cov3[i,j] = np.mean(deviation_vector[i]*deviation_vector[j], axis=0)
 
-        # Calculate the Pearson Coefficients for this matrix (returning them as an array, too.)
-        #pears = np.zeros(shape=(3,3))
-        #for i in range(3):
-        #    for j in range(3):
-        #        if i != j:
-        #            pears[i,j] = cov[i,j]/(stdevs[0,i]*stdevs[0,j])
-
-
-
-        return cov, stdevs, vec_L, cov2, stdevs2, vec_4d, bound_or_not
+        return cov, stdevs, vec_L, cov2, stdevs2, vec_4d, cov3, vec_LE
     # Returns a pandas dataframe instead: useful to avoid write conflicts. Cleanup after.
     # Same monte as above, except with covariance matrices under ['covtrix'] too.
     def table_covmonte(self, table, n):
         table = self.converter.nowrite_GAL_to_GALCENT(table)
         table = angular().get_momentum(table)
-        covtrices, stdevslist, mean_angulars = [], [], []
-        covtrices2, stdevslist2, mean_4ds = [], [], []
+        covtrices, stdevslist, mean_angulars = [], [], [] # standard [lx ly lz] covtrices
+        covtrices2, stdevslist2, mean_4ds = [], [], [] # sarah sofie lovdals [L Lz E circ]
+        covtrices3, mean_4dLEs = [],[] # jorges request [lx ly lz E]
         for row in table:
             l, b, dist, dmul, dmub, vlos = row['l'], row['b'], row['dist'], row['dmu_l'], row['dmu_b'], row['vlos']
             edist, edmul, edmub, evlos = row['edist'], row['edmu_l'], row['edmu_b'], row['evlost']
             vec = [l, b, dist, dmul, dmub, vlos, edist, edmul, edmub, evlos]
-            covtrix, stdevs, vec_L, covtrix2, stdevs2, vec_4d, bound_or_not = self.vec_covmonte(vec, n)
+            covtrix, stdevs, vec_L, covtrix2, stdevs2, vec_4d, covtrix3, vec_LE = self.vec_covmonte(vec, n)
             covtrices.append(covtrix), stdevslist.append(stdevs), mean_angulars.append(vec_L)
             covtrices2.append(covtrix2), stdevslist2.append(stdevs2), mean_4ds.append(vec_4d)
+            covtrices3.append(covtrix3), mean_4dLEs.append(vec_LE)
 
         df = table.to_pandas()
-        df['bound'] = bound_or_not
-        df['vec_L'] = mean_angulars
-        df['covtrix'] = covtrices
+
+        df['covtrix'] = covtrices # lx ly lz covariance matrices
+        df['vec_L'] = mean_angulars # array of angular momenta [l1 l2 l3 l4...]
         df['dLx'], df['dLy'], df['dLz'] = np.array(stdevslist).T
-        df['vec_4d'] = mean_4ds
-        df['L'], df['Lz'], df['E'], df['circ'] = np.array(mean_4ds).T
-        df['covtrix2'] = covtrices2
+
+        df['vec_4d'] = mean_4ds # array of 4d SSLovdal vectors [L Lz E circ]
+        df['covtrix2'] = covtrices2 # covariance matrices for sarah sofie lovdal
+        df['L'], df['Lz'], df['E'], df['circ'] = np.array(mean_4ds).T # stored instead as individual values
+
         df['dL'], df['dLz'], df['dE'], df['dcirc'] = np.array(stdevslist2).T # in order
+        df['covtrix3'] = covtrices3 # covariance matrices for [lx ly lz E] format jorge wanted
+        df['vec_4dLE'] = mean_4dLEs # list of vectors for the above covariance matrices
 
         return df
     # Given table with n rows, will generate m multivariate-normal distributed momentum vectors for each row in table.
     # Will return a pandas, with n rows, and m columns: each column is one unique set of momentum vectors.
     # TODO: If you go down and do 2D analysis, you will need to scatter in energy space, too. Hence position.
     # TODO: Update 19/1/22 - 4D Analysis. Need to also monte-up L, Lz, E, Circularity.
-    def panda_duplimonte(self, table, m):
-        covtrices = table['covtrix']
-        L_vectors = table['vec_L']
+    # TODO: Update 27/1/22 - Done. Not necessary, apparently- Jorge doesn't want us to do so.
+    def panda_duplimonte(self, panda, m):
+        # Create example datasets with LxLyLz
+        covtrices = panda['covtrix']
+        L_vectors = panda['vec_L']
         list_of_rows = []
         # Generate L components for each row.
         for num,L_vector,covtrix in zip(range(len(covtrices)),L_vectors,covtrices):
             L_generated = random.default_rng().multivariate_normal(mean=L_vector, cov=covtrix, size=m)
             list_of_rows.append(list(L_generated))
-
         list_of_columns = list(map(list, zip(*list_of_rows)))
-        return list_of_columns
+
+        # Create example datasets with L LZ E CIRC
+        covtrices2 = panda['covtrix2']
+        fourD_vectors = panda['vec_4d']
+        list_of_rows_2 = []
+        # Generate L components for each row.
+        for num,L_vector,covtrix in zip(range(len(covtrices2)),fourD_vectors,covtrices2):
+            L_generated = random.default_rng().multivariate_normal(mean=L_vector, cov=covtrix, size=m)
+            list_of_rows_2.append(list(L_generated))
+        list_of_columns_2 = list(map(list, zip(*list_of_rows)))
+
+        # Create example datasets with LxLyLzE
+        covtrices3 = panda['covtrix3']
+        LE_vectors = panda['vec_4dLE']
+        list_of_rows_3 = []
+        # Generate L components for each row.
+        for num,L_vector,covtrix in zip(range(len(covtrices3)),LE_vectors,covtrices3):
+            L_generated = random.default_rng().multivariate_normal(mean=L_vector, cov=covtrix, size=m)
+            list_of_rows_3.append(list(L_generated))
+        list_of_columns_3 = list(map(list, zip(*list_of_rows_3)))
+
+
+
+        return list_of_columns, list_of_columns_2, list_of_columns_3
 
 # Great Circle Cell Counts in the Galactocentric System, as defined by 1996 Johnston Paper.
 # Note: Designed to work in Standard Polar, not Latipolar. ALL IN DEGREES!
@@ -966,22 +994,45 @@ class cluster3d(object):
                                [-10e3, 10e3],
                                [-7e3, 7e3]])
 
-    # Remove outlying L-values (units of sigma). Assumes r has already been cleaned out (see: gcc_table)
-    def clean(self, table, sig_tolerance):
+    # Remove outlying L-values (units of sigma). Takes either Panda or an Astropy Table via our format.
+    """
+    This assumes r has already been cleaned: see r_clean
+    Note that this will check each axis (x,y,z) for the sig_tolerance requirement
+    If even one of them do not satisfy it, it removes that value from table ("strong" requirement.) 
+    """
+    def L_clean(self, table, sig_tolerance):
+        # Grab momenta magnitudes (i.e. absolute values.)
+        Ls = np.abs(np.array([(table['Lx']),(table['Ly']),(table['Lz'])]).T) # as an array [[lx ly lz], [l2]...]
+        # Grab errors
+        dLs = np.array([table['dLx'],table['dLy'],table['dLz']]).T # same format as above.
+        # Grab differences (absolute)
+        difs = np.abs(Ls - dLs)
+        # Ratio them
+        difratios = difs / dLs
+        # If a dataframe, use table.drop (pandas)
+        if type(table) == pandas.DataFrame:
+            for num,row in enumerate(table):
+                for i in difratios[num]:
+                    if i >= sig_tolerance:
+                        table.drop(num)
+                        break
+        # Else use table.remove_row (astropy)
+        else:
+            for num,row in enumerate(table):
+                for i in difratios[num]:
+                    if i >= sig_tolerance:
+                        table.remove_row(num)
+                        break
+        return table
 
-        Ls = [table['Lx'],table['Ly'],table['Lz']]
-        mean_L, std_L = np.array([np.mean(d) for d in Ls]),np.array([np.std(d) for d in Ls])
-        table_cleaned = table
-        for num,row in enumerate(table):
-            L = np.array([row['Lx'],row['Ly'],row['Lz']])
-            L_dif = L - mean_L
-            mag_L_dif = np.array([abs(d) for d in L_dif])
-            sig_L_dif = mag_L_dif/std_L
-            for i in sig_L_dif:
-                if i >= sig_tolerance:
-                    table_cleaned.remove_row(num)
-                    break
-        return table_cleaned
+    # Remove stars within radius of r
+    def r_clean(self, table, minimum_radius):
+        # Clean Radius
+        for num, row in enumerate(table):
+            if row['r'] <= minimum_radius:
+                table.remove_row(num)
+
+        return table
 
     # Return probabilistic selection for bounding box as True or False (a generator object.) Replaces clean.
     # Returns [True, False, True...]: do data[getCuboid(data)] for the cube clip you need. Useful for preprocess.
@@ -1132,15 +1183,39 @@ class compclust(object):
         null = "null"
 
     # Get number of clusts (including outlier clustering, -1)
+    # This assumes that clusters are linearly ordered [-1,0,1,2,3,4...]
     def nclust_get(self, clust):
         return np.max(clust) + 2
 
+    # More complete nclust_get, albeit slower.
+    def nclust_get_complete(self, clust):
+        clust_list = []
+        nclust = 0
+        for clust_id in clust:
+            if clust_id in clust_list:
+                pass
+            else:
+                clust_list.append(clust_id)
+                nclust += 1
+        return nclust, clust_list
+
     # For a group, get the entirety of the set and get the number of clusters per clustering.
     # Also generates a PDF for the set of a given clustering having n_clust.
-    def graph_nclust(self, group):
-        # Load in the lists as a list of lists!
-        arrays = [windows_directories.duplimontedir + "\\" + group + "\\" + d + ".cluster.txt" \
-                  for d in ascii_info.duplimonte_saveids]
+    def graph_nclust(self, group, energy=False, sofie=False):
+        # Decide if using LxLyLzE or just LxLyLz
+        if energy == True:
+            # Load in the lists as a list of lists!
+            arrays = [windows_directories.duplimontedir + "\\" + group + "\\" + d + ".cluster.txt" \
+                      for d in ascii_info.duplimonte_LE_saveids]
+        elif sofie == True:
+            # Load in the lists as a list of lists!
+            arrays = [windows_directories.duplimontedir + "\\" + group + "\\" + d + ".cluster.txt" \
+                      for d in ascii_info.duplimonte_L4D_saveids]
+        else:
+            # Load in the lists as a list of lists!
+            arrays = [windows_directories.duplimontedir + "\\" + group + "\\" + d + ".cluster.txt" \
+                      for d in ascii_info.duplimonte_saveids]
+
         # Load in the arrays
         for num, array in enumerate(arrays):
             with open(array, 'rb') as f:
@@ -1151,7 +1226,7 @@ class compclust(object):
         graphutils.twod_graph().nclust_n(arrays, group)
 
     # Given two clusterings (clust1,clust2), map clust2 onto clust1 and return remapped clust 2 (same original format.)
-    # TODO: Change this to work confusion matrices instead (contingency matrix.)
+    # This only works for NxN cardinality (equal set size) and leverages the hungarian algorithm.
     """
     Thank Pallie/Aaron!
     https://stackoverflow.com/questions/55258457/
@@ -1162,15 +1237,123 @@ class compclust(object):
         contMatrix = contingency_matrix(clust1, clust2)
         labelMatcher = munkres.Munkres()
         labelTranlater = labelMatcher.compute(contMatrix.max() - contMatrix)
-
         uniqueLabels1 = list(set(clust1))
         uniqueLabels2 = list(set(clust2))
-
         tranlatorDict = {}
         for thisPair in labelTranlater:
+            print(thisPair)
             tranlatorDict[uniqueLabels2[thisPair[1]]] = uniqueLabels1[thisPair[0]]
 
         return np.array([tranlatorDict[label] for label in clust2])
 
+    # Given two clusterings, do the above, but in rectangular fashion (i.e. multiple matches to each.)
+    # Thanks Sascha for verbatim solution (we're modifying it, though.)
+    # https://stackoverflow.com/questions/50305614/finding-an-optimal-selection-in-a-2d-matrix-with-given-constrains
+    def compclust_multi(self, clust1, clust2):# Generate cost/etc matrices and do the map for lowest set cardinality
+        contmat = contingency_matrix(clust1, clust2)
+        max_cost = np.amax(contmat)
+        harvest_profit = max_cost - contmat
+        row_ind, col_ind = linear_sum_assignment(harvest_profit)
+        sol_map = np.zeros(contmat.shape, dtype=bool)
+        sol_map[row_ind, col_ind] = True
+
+        # Visualize plots (thanks Sascha!)
+        f, ax = plt.subplots(2, figsize=(9, 6))
+        sns.heatmap(contmat, annot=True, linewidths=.5, ax=ax[0], cbar=False,
+                    linecolor='black', cmap="YlGnBu")
+        sns.heatmap(contmat, annot=True, mask=~sol_map, linewidths=.5, ax=ax[1],
+                    linecolor='black', cbar=False, cmap="YlGnBu")
+        plt.tight_layout()
+        plt.show()
+
+        # Remap clust 2
+        row_ind, col_ind = row_ind - 1, col_ind - 1
+        newclust = np.zeros(shape=np.shape(clust2), dtype=int)
+        for thisPair in zip(row_ind, col_ind):
+            for num,clust_id in enumerate(clust2):
+                if clust_id == thisPair[1]:
+                    newclust[num] = thisPair[0]
+        return newclust
 
 
+    # The pre-final rendition:
+    """
+    Compute cluster match via hungarian method
+    If the 2nd clustering has say 9 clusterings while the first has 8, take the "least quality" match and relabel
+    The new label will be subject to an index limit (i.e. a "minimum value" to avoid mixing labels from multiple.) 
+    """
+    def compclust_multilabel(self, clust1, clust2, minimum_excess_index):
+        # Hungarian Algorithm Linear Sum Assignment (thanks Stack Exchange)
+        contmat = contingency_matrix(clust1, clust2)
+        max_cost = np.amax(contmat)
+        harvest_profit = max_cost - contmat
+        row_ind, col_ind = linear_sum_assignment(harvest_profit)
+        sol_map = np.zeros(contmat.shape, dtype=bool)
+        sol_map[row_ind, col_ind] = True
+
+        # Visualize plots (thanks Sascha!)
+        f, ax = plt.subplots(2, figsize=(9, 6))
+        sns.heatmap(contmat, annot=True, linewidths=.5, ax=ax[0], cbar=False,
+                    linecolor='black', cmap="YlGnBu")
+        sns.heatmap(contmat, annot=True, mask=~sol_map, linewidths=.5, ax=ax[1],
+                    linecolor='black', cbar=False, cmap="YlGnBu")
+        plt.tight_layout()
+        plt.show()
+
+        # Row is "clust1" and col is "clust2" and adjust for the fact that -1 is now 0
+        # This is our mapping for the columns (clust2) to the rows (clust1)
+        row_ind, col_ind = row_ind - 1, col_ind - 1
+
+        # Generate the new relabelled clustering
+        newclust = np.zeros(shape=np.shape(clust2), dtype=int)
+        for thisPair in zip(row_ind, col_ind):
+            for num,clust_id in enumerate(clust2):
+                if clust_id == thisPair[1]:
+                    newclust[num] = thisPair[0]
+
+        # Identify which clustering is the one with a higher number of clusters
+        """
+        If the 2nd cluster is np.max higher than the first, then we have a problem
+        This is "col_ind"
+        Find out if the max of this is larger for 2 than 1
+        If it is, then find the elements in this list not mapped over to the first
+        """
+        if np.max(clust2) > np.max(clust1):
+            # Generate a list of all unique indices for the original clust2
+            uniques = []
+            for cluster in clust2:
+                if cluster not in uniques:
+                    uniques.append(cluster)
+
+            # Find the indices that weren't paired by the Hungarian Algorithm (i.e. not remapped)
+            not_remapped = []
+            for unique in uniques:
+                if unique not in col_ind:
+                    not_remapped.append(unique)
+
+            # Generate replacement indices (subject to a "minimum_excess_index")
+            """
+            this index exists to let all "excess clusters" remain unique
+            minimum_excess_index is the minimum replacement!!!
+            for example, if clust2 is 8 and clust1 is 7, then a wise minimum would be 8:
+            the 8th cluster is labelled as an "excess cluster"
+            If you have two clusterings to compare to the base clustering, and both have 8
+            then comparing 1 to 0 should have a minimum of 8
+            comparing 2 to 0 should have a minimum of 9
+            this keeps the excess of either of them independent (i.e. the excess in 1-0 is 8, 2-0 is 9)
+            then you can individually compare cluster 8 and 9 to see if they are the same or different
+            anyway, just note that you should carefully pick the minimum_excess
+            and make sure that no excess clusterings between different Monte-carlo's are labelled the same
+            """
+            not_in_indices = []
+            for num,not_index in enumerate(not_remapped):
+                not_in_indices.append(minimum_excess_index + num)
+
+            # Go through this relabelled clustering and set all "not_in" clusters to min_new_label or higher
+            # This means that if clust1 is np.max of 8, and clust2 is 10, you want min_new_label set to be set to 9.
+            for mun,not_in_index in enumerate(not_remapped):
+                for num,clust_id in enumerate(newclust):
+                    if clust_id == not_in_index:
+                        newclust[num] = not_in_indices[mun]
+
+        return newclust

@@ -39,7 +39,7 @@ def do_monte_table(groupset):
             continue
 # do_monte but with covariance matrices: note that we're now dealing with PANDAS DATAFRAMES and NOT ASTROPY TABLES
 def do_covmonte_table(groupsetsaveset):
-    #print("Covmontecarloing' ", groupsetsaveset)
+    print("Covmontecarloing' ", groupsetsaveset)
     group,astropyset,pandaset = groupsetsaveset
     # Grab table
     writer = hdfutils.hdf5_writer(windows_directories.datadir, ascii_info.asciiname)
@@ -50,6 +50,8 @@ def do_covmonte_table(groupsetsaveset):
     monte.galdefine(sourcedir, sourcecoord)
     # Run Monte on table
     df = monte.table_covmonte(table,n_monte)
+    # Do a quick clean on the table to remove dirty L values whose ratio to sigma exceeds n, here n=3.
+    df = galcentricutils.cluster3d().L_clean(df, 3)
     # Save the table: watch out for if file is already being written to (retry if it fails.)
     while True:
         try:
@@ -65,18 +67,29 @@ def do_covmonte_table(groupsetsaveset):
 
     # Done
     #print("Done with ", groupsetsaveset)
+
 # duplimonte for each of our tables. Dumps all pickled results inside subdirectors datadir/duplimonte/group.
-# use pickle.load to load the file.
+# use pickle.load to load the file. Generates artificial angular momenta sets.
 def do_duplimonte_table(groupsetm):
     print(groupsetm)
     group, set, m = groupsetm
     writer = hdfutils.hdf5_writer(windows_directories.datadir, ascii_info.asciiname)
     df = writer.read_df(group, set)
-    list_of_columns = galcentricutils.monte_angular().panda_duplimonte(df, m)
+    list_of_columns, list_of_columns_2, list_of_columns_3 = galcentricutils.monte_angular().panda_duplimonte(df, m)
     # Generate sets for list_of_tables
-    indices = [("L_{}.txt").format(d) for d in [str(d) for d in range(m)]]
-    # Pickle and dump all the tables to file
+    indices, indices_2, indices_3 = [("L_{}.txt").format(d) for d in [str(d) for d in range(m)]], \
+                                    [("L4D_{}.txt").format(d) for d in [str(d) for d in range(m)]], \
+                                    [("LE_{}.txt").format(d) for d in [str(d) for d in range(m)]]
+    # Pickle and dump all the tables to file for LxLyLz
     for column, savedex in zip(list_of_columns, indices):
+        with open(windows_directories.duplimontedir + "\\" + group + "\\" + savedex, 'wb') as f:
+            pickle.dump(column, f)
+    # Pickle and dump all the tables to file for LLzECirc
+    for column, savedex in zip(list_of_columns_2, indices_2):
+        with open(windows_directories.duplimontedir + "\\" + group + "\\" + savedex, 'wb') as f:
+            pickle.dump(column, f)
+    # Pickle and dump all the tables to file for LxLyLzE
+    for column, savedex in zip(list_of_columns_3, indices_3):
         with open(windows_directories.duplimontedir + "\\" + group + "\\" + savedex, 'wb') as f:
             pickle.dump(column, f)
 
@@ -166,6 +179,7 @@ def do_gccsplit_confidence(vararray):
 
 # Do a quick hdbscan clustering using the provided parameters: designed for duplimonte directory structure.
 # Arrayinfo should be [group, saveid] for the duplimonte: minpar as in cluster3d()
+# Should be given a list of angular momenta [[lx1,ly1,lz1],[lx2...]...]
 def do_hdbscan(arrayinfominpar):
     arrayinfo, minpar = arrayinfominpar
     with open(windows_directories.duplimontedir + "\\" + arrayinfo[0] + "\\" + arrayinfo[1] + ".txt", 'rb') as f:
@@ -177,6 +191,50 @@ def do_hdbscan(arrayinfominpar):
     # Generate a HTML for this clustering under imgdir\\ + "kmeans_html\\duplimonte_kmeanshtml\\" + group_saveid.html
     savedexdir = "kmeans_html\\duplimonte_kmeanshtml\\" + arrayinfo[0] + "\\" + arrayinfo[1]
     graphutils.threed_graph().kmeans_L_array(data, clustered, savedexdir, False)
+# Should be given a list of angular momenta [[L1 Lz1 E1 circ1],[...]...]
+def do_hdbscan_L4D(arrayinfominpar):
+    arrayinfo, minpar = arrayinfominpar
+    with open(windows_directories.duplimontedir + "\\" + arrayinfo[0] + "\\" + arrayinfo[1] + ".txt", 'rb') as f:
+        data = pickle.load(f)
+    data = np.array(data)
+
+    # We need to normalize all the variables now, versus angular momentum L (zeroth.)
+    """
+    Just normalize to the means. See hdbscan_LE for the haphazard way. 
+    """
+    data = data.T
+    data[0] = data[0]/np.mean(np.abs(data[0]))
+    data[1] = data[1]/np.mean(np.abs(data[1]))
+    data[2] = data[2]/np.mean(np.abs(data[2]))
+    data = data.T
+    clustered = galcentricutils.cluster3d().listhdbs(data, minpar)
+    with open(windows_directories.duplimontedir + "\\" + arrayinfo[0] + "\\" + arrayinfo[1] + ".cluster.txt", 'wb') as f:
+        pickle.dump(obj=clustered, file=f)
+    # Generate a HTML for this clustering under imgdir\\ + "kmeans_html\\duplimonte_kmeanshtml\\" + group_saveid.html
+    #savedexdir = "kmeans_html\\duplimonte_kmeanshtml\\" + arrayinfo[0] + "\\" + arrayinfo[1] + "_WITH_SOFIELOVDAL"
+    #graphutils.threed_graph().kmeans_L_array(data, clustered, savedexdir, False, False)
+# Should be given a list of angular momenta [[lx1,ly1,lz1, E1],[lx2...,E2]...]
+def do_hdbscan_LE(arrayinfominpar):
+    arrayinfo, minpar = arrayinfominpar
+    with open(windows_directories.duplimontedir + "\\" + arrayinfo[0] + "\\" + arrayinfo[1] + ".txt", 'rb') as f:
+        data = pickle.load(f)
+    data = np.array(data)
+
+    # An important step: we should rescale the energy to match the angular momentum in terms of dimensionality.
+    """
+    Most energy is 0->-250,000 (10^5)
+    Most momenta is -3,500->3500  (10^3) 
+    Divide energy by around 100 to make it of equal importance.
+    """
+    data = data.T
+    data[3] *= 1e-2
+    data = data.T
+    clustered = galcentricutils.cluster3d().listhdbs(data, minpar)
+    with open(windows_directories.duplimontedir + "\\" + arrayinfo[0] + "\\" + arrayinfo[1] + ".cluster.txt", 'wb') as f:
+        pickle.dump(obj=clustered, file=f)
+    # Generate a HTML for this clustering under imgdir\\ + "kmeans_html\\duplimonte_kmeanshtml\\" + group_saveid.html
+    savedexdir = "kmeans_html\\duplimonte_kmeanshtml\\" + arrayinfo[0] + "\\" + arrayinfo[1] + "_WITH_ENERGY"
+    graphutils.threed_graph().kmeans_L_array(data, clustered, savedexdir, False, False)
 
 
-
+# Will relabel clust2 to clust1 (and save the excess.)
