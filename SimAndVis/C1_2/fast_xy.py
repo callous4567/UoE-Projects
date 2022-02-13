@@ -68,17 +68,17 @@ class fast_xy():
                         + mat[i, self.pbc(j - 1)] \
                         + mat[i, self.pbc(j + 1)]
                 # This is a dot product
-                E += -1 * np.dot(mat[i, j],nnsum)
-        E = (1 / 2) * E  # doublecounting
+                E -= np.dot(mat[i, j],nnsum)
+        E /= 2
         return E
 
     # Both magnetisation and energy in one for the XY Model
     def fast_magenergy(self, mat):
-        E = self.energy(mat)
         M = np.zeros(2)
         for i in range(self.lx):
             for j in range(self.lx):
                 M += mat[i,j]
+        E = self.energy(mat)
         return M, E
 
     # Compute the first-order divergence field
@@ -118,14 +118,14 @@ class fast_xy():
         # Create a True/False array of spins (for the ones that we decide to flip.) False is unflipped.
         mark_array = np.zeros((self.lx, self.lx), dtype=types.boolean)
 
-        # Pick a random point to start the cluster (the seed)
-        start = np.random.randint(0, self.lx, 2)
-        i, j = int(start[0]), int(start[1])
-
         # Generate a random flip for this cluster
         rand = np.array([np.random.normal(), np.random.normal()])
         randmag = np.sqrt(rand[0]**2 + rand[1]**2)
         randspin = rand/randmag
+
+        # Pick a random point to start the cluster (the seed)
+        start = np.random.randint(0, self.lx, 2)
+        i, j = int(start[0]), int(start[1])
 
         # Take the random start point, and flip it (S -> S - 2(S*r)r...)
         mat[i, j] -= 2 * np.dot(mat[i, j], randspin) * randspin
@@ -154,9 +154,8 @@ class fast_xy():
             for centre in current_centres:
                 # Set up centre index
                 i, j = types.int32(centre[0]), types.int32(centre[1])
-                # Grab spin for centre
-                centre_spin = mat[i, j]
-                # Grab indices for periodic edges
+
+                # Grab indices for near neighbours
                 leftrighttopbot_x = np.array([self.pbc(i - 1), self.pbc(i + 1), i, i])
                 leftrighttopbot_y = np.array([j, j, self.pbc(j - 1), self.pbc(j + 1)])
 
@@ -164,20 +163,14 @@ class fast_xy():
                 for ii, jj in zip(leftrighttopbot_x, leftrighttopbot_y):
                     # Only work if not previously flipped
                     if mark_array[ii, jj] == False:
-                        # Grab the absolute of the change in magnetization (should be negative.)
-                        mag_change = 2 * np.dot(mat[ii, jj], randspin) * randspin
-                        new_mag = mat[ii,jj] - mag_change
-                        # Grab the energy change respective to the centre point (should be negative: cancels to +.)
-                        E_change = 1 * np.dot(mag_change, centre_spin)
                         # Generate probability
-                        probability = 1 - np.exp(np.min(np.array([0,
-                                                                  -1 * E_change / T])))
+                        probability = 1 - np.exp(np.min(np.array([0,(-1/T)*np.dot(-2*randspin*(np.dot(randspin, mat[ii,jj])),mat[i,j])])))
                         # Generate random number [0,1]
                         u = np.random.random()
                         # Decide whether to flip
-                        if probability > u:
+                        if u < probability:
                             # Flip it in the array
-                            mat[ii, jj] -= new_mag
+                            mat[ii, jj] -= 2*np.dot(randspin, mat[ii,jj])*randspin
                             ## Change the mark to True
                             mark_array[ii, jj] = True
                             ## Add this newly-flipped point as a new centre
@@ -191,6 +184,42 @@ class fast_xy():
         M, E = self.fast_magenergy(mat)
         sweep += 1
         return mat, M, E, T, sweep
+
+    # Averages and errors calculation, but faster!
+    def averages_errors(self, all_E, T, autocor):
+        # Sample every autocor'th measurement
+        all_E = all_E[0::autocor+1]
+        num_samples = len(all_E)
+        # Get squares
+        all_EE = all_E**2
+        # Get averages
+        avg_E = np.mean(all_E)
+        avg_EE = np.mean(all_EE)
+        # Get Errors. Note sample length = Autocorrelation length, so cancels out.
+        avg_E_err = np.sqrt(((avg_EE - avg_E**2)*(2))/(num_samples))
+        # Estimate susceptibility and specific heat/spin
+        c_true = (1/self.lx**2)*(1/T**2)*(avg_EE - avg_E**2)
+        # Error estimation for chi and c via the Bootstrap method
+        number_of_resamples = 100
+        chi_list, c_list = np.empty(number_of_resamples), \
+                           np.empty(number_of_resamples)
+        for i in range(number_of_resamples):
+            # Select num_samples random from num_samples
+            resample = np.random.randint(0, num_samples, num_samples)
+            # Grab Magnetism/Energy samples
+            Qall_E = all_E[resample]
+            Qall_EE = Qall_E ** 2
+            # Get averages
+            Qavg_E = np.mean(Qall_E)
+            Qavg_EE = np.mean(Qall_EE)
+            # Estimate susceptibility and specific heat/spin
+            Qc = (1/self.lx**2)*(1/T**2)*(Qavg_EE - Qavg_E**2)
+            # Append
+            c_list[i] = Qc
+        c_average = np.mean(c_list)
+        cc_average = np.mean(c_list**2)
+        boot_c = np.sqrt(cc_average - c_average**2)
+        return avg_E/(self.lx**2), avg_E_err/(self.lx**2), c_true, boot_c
 
 # Periodic Boundary condition.
 @njit(fastmath=True)
@@ -261,7 +290,7 @@ def fast_magenergy(lx, mat):
 
 # Cluster version of the Glauber. Note that this will just ignore changes in M and E (lazy.)
 @njit(fastmath=True)
-def fast_clustglauber(lx, mat, M, E, T, sweep):
+def fast_clustglauber(lx, mat, T, sweep):
     # Create a True/False array of spins (for the ones that we decide to flip.) False is unflipped.
     mark_array = np.zeros((lx, lx), dtype=types.boolean)
 
@@ -311,20 +340,15 @@ def fast_clustglauber(lx, mat, M, E, T, sweep):
             for ii, jj in zip(leftrighttopbot_x, leftrighttopbot_y):
                 # Only work if not previously flipped
                 if mark_array[ii, jj] == False:
-                    # Grab the absolute of the change in magnetization (should be negative.)
-                    mag_change = 2 * np.dot(mat[ii, jj], randspin) * randspin
-                    new_mag = mat[ii,jj] - mag_change
-                    # Grab the energy change respective to the centre point (should be negative: cancels to +.)
-                    E_change = 1 * np.dot(mag_change, centre_spin)
                     # Generate probability
-                    probability = 1 - np.exp(np.min(np.array([0,
-                                                              -1 * E_change / T])))
+                    probability = 1 - np.exp(np.min(
+                        np.array([0, (-1 / T) * np.dot(-2 * randspin * (np.dot(randspin, mat[ii, jj])), mat[i, j])])))
                     # Generate random number [0,1]
                     u = np.random.random()
                     # Decide whether to flip
-                    if probability > u:
+                    if u < probability:
                         # Flip it in the array
-                        mat[ii, jj] -= new_mag
+                        mat[ii, jj] -= 2 * np.dot(randspin, mat[ii, jj]) * randspin
                         ## Change the mark to True
                         mark_array[ii, jj] = True
                         ## Add this newly-flipped point as a new centre
@@ -335,6 +359,25 @@ def fast_clustglauber(lx, mat, M, E, T, sweep):
         current_centres = new_centres
 
     # Sweep complete.
-    M, E = fast_magenergy(mat)
+    M, E = fast_magenergy(lx, mat)
     sweep += 1
+
     return mat, M, E, T, sweep
+
+
+# Compute the angles for all elements of the array
+@njit(fastmath=True)
+def angle(lx, mat):
+    angles = np.zeros((lx, lx))
+    for i in range(lx):
+        for j in range(lx):
+            vec = mat[i,j]
+            angles[i,j] = np.arctan2(vec[1],vec[0])
+    # reverse the negatives
+    for i in range(lx):
+        for j in range(lx):
+            if angles[i,j] > 0:
+                pass
+            else:
+                angles[i,j] += 2*np.pi
+    return angles

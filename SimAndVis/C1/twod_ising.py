@@ -637,9 +637,10 @@ class twod_ising(object):
         # Get Errors
         avg_M_err, avg_E_err = np.sqrt(((avg_MM - avg_M ** 2) * (2 * autolength)) / (num_samples * samplelength)), \
                                np.sqrt(((avg_EE - avg_E ** 2) * (2 * autolength)) / (num_samples * samplelength))
-        # Estimate susceptibility and specific heat/spin
-        chi_true, c_true = (1 / num_samples) * (1 / self.T) * (avg_MM - avg_M ** 2), \
-                           (1 / num_samples) * (1 / self.T ** 2) * (avg_EE - avg_E ** 2)
+        # Estimate susceptibility and specific heat/spin (SPECIFIC!!! YOU NEED TO USE N NOT NUM_SAMPLES!!!)
+        number_of_spins = self.lx**2
+        chi_true, c_true = (1 / number_of_spins) * (1 / self.T) * (avg_MM - avg_M ** 2), \
+                           (1 / number_of_spins) * (1 / self.T ** 2) * (avg_EE - avg_E ** 2)
         # Error estimation for chi and c via the Bootstrap method
         # Bootstrap error as defined by https://thestatsgeek.com/2013/07/02/the-miracle-of-the-bootstrap/
         # The error in the notes didn't match up to the error methods online so I just went with these...

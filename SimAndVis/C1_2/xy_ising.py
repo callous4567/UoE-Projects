@@ -1,8 +1,10 @@
+import pickle
 import time
 
 import astropy.convolution
 import matplotlib
 import numba.core.types
+from astropy.table import Table
 from matplotlib import rc, cm
 import os
 from matplotlib.patches import Patch
@@ -32,20 +34,23 @@ https://www.youtube.com/watch?v=E9T4MoEZstU 2001x2001 Glauber (uses fast_ising i
 """
 class xy_ising(object):
     # TODO: make sure the current init is fine. Remember we added input instead of two separate inits for multirun.
-    def __init__(self):
+    def __init__(self, T=None):
         # Initialization parameters.
-        self.lx = 128
-        self.T = 0.9
+        self.lx = 50
+        if T != None:
+            self.T = T
+        else:
+            self.T=1
         self.binrate = 1  # 1e6 # binrate for animations. Every i'th sweep is selected as frames.
         self.rng = np.random.default_rng()
         self.M, self.E = None, None
         self.sweep = 0 # in NUMBER OF FLIPS
-        self.max_sweeps = int(601e6)
+        self.max_sweeps = int(1e6)
         self.directory = os.getcwd()
         self.filename = "datafile.hdf5"
         self.set = "data"
         self.numset = "results"
-        not_up = True # True if you want random False if else
+        not_up = False # True if you want random False if else
         if not_up == True:
             mat = np.empty((self.lx, self.lx, 2))
             for i in range(self.lx):
@@ -72,13 +77,13 @@ class xy_ising(object):
             os.mkdir(self.imgdir)
         except:
             pass
-        self.temprate = int(60e6)
-        self.temprise = 0.1
         self.all_M, self.all_E = None, None
         self.saveattempts = 5
         self.fast = fast_xy(self.lx)
         self.convolve_radius = 2
-
+        self.temprate = int(300000000)
+        self.temprise = 0.1
+        self.autocor = int(1e3)
 
     # High-scale run (no saving) that will output images to imgdir rather than keeping in memory/writing.
     """
@@ -106,7 +111,7 @@ class xy_ising(object):
         #div_field = self.fast.divergence_first(self.mat)
         #col_field = astropy.convolution.convolve_fft(div_field, kernel=convolution_kernel)
         col_field = self.fast.angle(self.mat)
-        im = plt.imshow(col_field, cmap='binary', interpolation='lanczos')#'bwr')
+        im = plt.imshow(col_field, cmap='plasma', interpolation='nearest')#'bwr')
         plt.colorbar(label="Phase")
 
         # Preliminary Save
@@ -124,8 +129,95 @@ class xy_ising(object):
                 im.set_array(col_field)
                 if self.sweep % self.temprate == 0:
                     self.T += self.temprise
-                plt.savefig(self.imgdir + "\\" + str(self.sweep) + ".png", dpi=300, block=False)
-    # High-scale run (no saving) that will output images to imgdir rather than keeping in memory/writing.
+                plt.savefig(self.imgdir + "\\" + str(self.sweep) + ".png", dpi=300)
+
+    # Save data.
+    """
+    all_M and all_E are saved to data.txt as a pickled numpy array np.array([all_M, all_E])
+    Deprecated format is pandas DataFrame (much too slow) so some code may reflect this. 
+    """
+    def save(self):
+        i = 0
+        while i <= self.saveattempts:
+            try:
+                # Dump it
+                with open(self.imgdir + "\\" + "data.txt", 'wb') as f:
+                    pickle.dump(obj=np.array([self.all_E]), file=f)
+                break
+            except:
+                i += 1
+                time.sleep(self.rng.integers(0, 30, 1)[0])
+                pass
+
+    # Produce graphs for multiprocessed runs selected.
+    def multigraph(self):
+        max_sweeps = int(1e6)
+        lx = 50
+        dyn = 'g'
+        # Check dynamics type. Note: make sure all temps attached here are same as multirun.py.
+        if dyn == 'g':
+            temperatures = np.linspace(0.5, 2, 30)
+        distincts = [("{0}_{1:.4f}_{2}_{3}").format(lx, T, dyn, max_sweeps) for T in temperatures]
+        imgdirs = [os.getcwd() + "\\" + "img" + "\\" + distinct for distinct in distincts]
+        files = [imgdir + "\\" + "results.txt" for imgdir in imgdirs]
+        arrays = []  # avg_M, avg_E, avg_M_err, avg_E_err, chi_true, chi_error, c_true, c_error, self.T
+        # Grab dumps and make table.
+        for file in files:
+            try:
+                with open(file, 'rb') as f:
+                    loaded = pickle.load(f)
+                    arrays.append(loaded)
+            except:
+                pass
+        arrays = np.array(arrays)
+        labels = ["avg_E", "avg_E_err", "avg_C", "avg_C_err", 'T']
+        table = Table(arrays, names=labels)
+        table.sort('T')
+
+        # Plot
+        fig = plt.figure()
+        plt.plot(table['T'], table['avg_C'], color='red')
+        plt.title("Specific Heat/Spin Fluctuation vs. Temperature")
+        plt.xlabel("Temperature")
+        plt.ylabel("C/Spin")
+
+        # Dump figure
+        plt.savefig(dyn + "_multi.png", dpi=600)
+        plt.show()
+
+        # Save the table so that people can have a gander at it.
+        writer = hdfutils.hdf5_writer(os.getcwd(), "multirun_data.hdf5")
+        writer.write_table(dyn, "results", table)
+
+    # For multiprocessed version: no thrills attached.
+    def run_multi(self):
+        # Calculate M and E for initial step
+        self.M, self.E = self.fast.fast_magenergy(self.mat)
+        all_M, all_E = [self.M], [self.E]
+
+        # Run Sim
+        while self.sweep < self.max_sweeps:
+            self.fast_clustglauber()
+            all_M.append(self.M), all_E.append(self.E)
+
+        # Create datasave format
+        self.all_E = np.array(all_E)
+
+        # Trim it (for equilibration/etc.)
+        self.all_E = self.all_E[int(1e5):]
+
+        # Save it
+        self.save()
+        self.fast_averages_errors()
+
+    # Averages and Errors, but fast_ising.
+    def fast_averages_errors(self):
+        # Calculate averages and errors
+        avg_E, avg_E_err, avg_C, avg_C_err = self.fast.averages_errors(self.all_E, self.T, self.autocor)
+
+        array_dump = np.array([avg_E, avg_E_err, avg_C, avg_C_err, self.T])
+        with open(self.imgdir + "\\" + "results.txt", 'wb') as f:
+            pickle.dump(obj=array_dump, file=f)
 
     """
     Estimated run time: 
@@ -179,14 +271,5 @@ class xy_ising(object):
 
     # Glauber, but using fast_ising. Clustered.
     def fast_clustglauber_fastmath(self):
-        self.mat, self.M, self.E, self.T, self.sweep = fast_clustglauber(self.lx, self.mat, self.M, self.E,
-                                                                                   self.T,self.sweep)
-
-uwu = xy_ising()
-uwu.run_high()
-
-
-
-
-
+        self.mat, self.M, self.E, self.T, self.sweep = fast_clustglauber(self.lx, self.mat, self.T,self.sweep)
 

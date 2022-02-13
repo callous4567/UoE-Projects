@@ -212,8 +212,8 @@ class fast_ising():
         avg_M_err, avg_E_err = np.sqrt(((avg_MM - avg_M**2)*(2))/(num_samples)), \
                                np.sqrt(((avg_EE - avg_E**2)*(2))/(num_samples))
         # Estimate susceptibility and specific heat/spin
-        chi_true, c_true = (1/num_samples)*(1/T)*(avg_MM - avg_M**2),\
-                           (1/num_samples)*(1/T**2)*(avg_EE - avg_E**2)
+        chi_true, c_true = (1/self.lx**2)*(1/T)*(avg_MM - avg_M**2),\
+                           (1/self.lx**2)*(1/T**2)*(avg_EE - avg_E**2)
         # Error estimation for chi and c via the Bootstrap method
         number_of_resamples = 4000
         chi_list, c_list = np.empty(number_of_resamples), \
@@ -228,8 +228,8 @@ class fast_ising():
             Qavg_M, Qavg_E = np.mean(Qall_M), np.mean(Qall_E)
             Qavg_MM, Qavg_EE = np.mean(Qall_MM), np.mean(Qall_EE)
             # Estimate susceptibility and specific heat/spin
-            Qchi = (1/num_samples)*(1/T)*(Qavg_MM - Qavg_M**2)
-            Qc = (1/num_samples)*(1/T**2)*(Qavg_EE - Qavg_E**2)
+            Qchi = (1/self.lx**2)*(1/T)*(Qavg_MM - Qavg_M**2)
+            Qc = (1/self.lx**2)*(1/T**2)*(Qavg_EE - Qavg_E**2)
             # Append
             chi_list[i], c_list[i] = Qchi, Qc
         chi_average, c_average = np.mean(chi_list), np.mean(c_list)

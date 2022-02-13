@@ -3,36 +3,24 @@ import numpy as np
 from astropy.table import Table
 import os
 import hdfutils
-import windows_multiprocess_functions
+import windows_xy_functions
 import time
 
+from SimAndVis.C1_2.xy_ising import xy_ising
+
 time_start = time.time()
-dynamics = 'k'
-if dynamics == 'g':
-    temps_1 = np.linspace(1, 2, 10)
-    temps_2 = np.linspace(2, 2.2, 20)
-    temps_4 = np.linspace(2.2, 2.4, 40)
-    temps_5 = np.linspace(2.4, 2.5, 10)
-    temps_6 = np.linspace(2.5, 3.5, 10)
-    temperatures = np.concatenate([temps_1, temps_2, temps_4, temps_5, temps_6])
-    dynamics = [dynamics for T in temperatures]
-if dynamics == 'k':
-    temps_1 = np.linspace(0.1, 3, 30)
-    temps_2 = np.linspace(-10, 0, 100)
-    temps_2 = np.array([10**x for x in temps_2])
-    temperatures = np.concatenate([temps_1, temps_2]) # , temps_2, temps_4, temps_5, temps_6])
-    dynamics = [dynamics for T in temperatures]
-zipped = list(zip(temperatures, dynamics))
+temperatures = np.linspace(0.5, 2, 30)
 
 # This is to generate all the simulation runs for each temperature
-
 results = ["null"]
 # Regularly map/pool :)
 if __name__ == '__main__':
     pool = multiprocessing.Pool(10)
-    results = pool.map(windows_multiprocess_functions.twod_regenerate_averages, zipped)
+    results = pool.map(windows_xy_functions.model_run, temperatures)
     pool.close()
 
 if len(results) == len(temperatures):
     time_end = time.time()
     print(time_end - time_start)
+    uwu = xy_ising()
+    uwu.multigraph()
