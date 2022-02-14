@@ -12,11 +12,11 @@ This includes code for the:
 
 ### 4th Year Telescope Group Project (Star Clusters Project) 
 
-### 5th Year Computational Astrophysics, Python Modelling and Visualization (tbd) courses, alongside MPhys (tbd, data redacted) 
+### 5th Year Computational Astrophysics (Mostly Grid Hydrodynamics)
 
-### 5th Year Python Modelling and Visualization (tbd) course (and extra code snippets made for fun) (under SimVis)
+### 5th Year Python Modelling and Visualization (under SimVis) ONGOING !!!
 
-### 5th Year MSc Project (tbd) with data redacted (under master-streams)
+### 5th Year MSc Project _with data redacted_ (under master-streams) ONGOING !!!
 
 Disclaimer: a lot of it is dirty/as-it-was-after-ending-the-work
 What student cleans up their code after the fact? Not this one.
