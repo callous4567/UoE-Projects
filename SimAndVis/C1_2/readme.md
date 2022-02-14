@@ -3,7 +3,7 @@ See [here](https://www.youtube.com/watch?v=5ZzX12x073k) to get a video of it in 
 
 Critical slowdown is a problem: I have included an option to use the Wolff Algorithm to get past this. Vortices do not form here, however (duh- we avoid critical slowdown.) 
 
-**Here's an example plot that you can get using the Wolff implementation I've put in (just demonstrating critical temperature.)** Since this matches the value you find on Wikipedia [here](https://en.wikipedia.org/wiki/Classical_XY_model#/media/File:XY_SpecificHeat.svg) I am guessing that the code I put in works somewhat. I just felt like I needed at least a pseudocode that worked along the same principle before I stopped coding for this little project. Anyhow, with that, this work is complete. [here](https://www.youtube.com/watch?v=pXdBNOtOG7M) is a video of the Wolff algorithm in action.
+**Here's an example plot that you can get using the Wolff implementation I've put in (just demonstrating critical temperature.)** Since this matches the value you find on Wikipedia [here](https://en.wikipedia.org/wiki/Classical_XY_model#/media/File:XY_SpecificHeat.svg) I am guessing that the code I put in works somewhat. I just felt like I needed at least a pseudocode that worked along the same principle before I stopped coding for this little project. Anyhow, with that, this work is complete. [here](https://www.youtube.com/watch?v=bz7cXaceQ5E) is a video of the Wolff algorithm in action.
 
 ![alt text](https://github.com/callous4567/UoE-Projects/blob/master/SimAndVis/C1_2/g_multi.png)
 
