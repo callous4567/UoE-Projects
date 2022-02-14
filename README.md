@@ -21,3 +21,5 @@ This includes code for the:
 Disclaimer: a lot of it is dirty/as-it-was-after-ending-the-work
 What student cleans up their code after the fact? Not this one.
 **Only the 4th Year TGP Code and basically all 5th Year Code is of reasonable quality. The rest is just here as reference for some niche usages.**
+
+Disclaimer for any UoE students hoping to rip code from here to use without putting effort in: good luck. If there's one single thing I have been marked down for, it's comments. Make that two: formatting. I do not adhere to PEP or anything like that (unless it's collaborative code) and so, GOD SPEED! :D :D :D 
