@@ -28,7 +28,11 @@ and in general is the model.
 
 If you want to do an example run, take a look at the class **checkpoint** within this, specifically the method **run**.
 
-Note: There is added functionality to use the Wolff Algorithm, to allow for Cluster Monte Carlo. This has to be manually specified, though, and you will have to change a few lines of code to drag it in from fast_ising. 
+Note: There is added functionality to use the Wolff Algorithm, to allow for Cluster Monte Carlo. This has to be manually specified, though, and you will have to change a few lines of code to drag it in from fast_ising. Using Wolff is much faster when it comes to producing viable results
+
+**As an example usage of the Wolff implementation here, consider the plot below. The autocorrelation time was set to 10 cluster flips, with 2,000 flips total for measurement, on a 50^2 lattice.**
+
+![alt text](https://github.com/callous4567/UoE-Projects/blob/master/SimAndVis/C1/g_multi.png)
 
 ## windows_multiprocess_functions.py 
 Has the functions that multirun.py needs to correctly run. See this, if looking at multirun.
