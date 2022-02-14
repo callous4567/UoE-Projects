@@ -13,7 +13,10 @@ This includes code for the:
 ### 4th Year Telescope Group Project (Star Clusters Project) 
 
 ### 5th Year Computational Astrophysics, Python Modelling and Visualization (tbd) courses, alongside MPhys (tbd, data redacted) 
-*Mphys is "master-streams" and is currently WIP- note that if you use this code, you should make sure to give me credit in some part... :/* 
+
+### 5th Year Python Modelling and Visualization (tbd) course (and extra code snippets made for fun) (under SimVis)
+
+### 5th Year MSc Project (tbd) with data redacted (under master-streams)
 
 Disclaimer: a lot of it is dirty/as-it-was-after-ending-the-work
 What student cleans up their code after the fact? Not this one.
