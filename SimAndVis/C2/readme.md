@@ -5,7 +5,9 @@ here at UoE. Note that the file structures involved are designed for Windows, an
 or any other OS.
 
 ## fast_gol.py
-Contains the Numba code. Also includes a method for calculating the centre of mass of Gliders.
+Contains the Numba code. Also includes a method for calculating the centre of mass of Gliders, which was used to produce this plot of the speed and position of the COM of a standard glider produced by Gosper's Gun
+
+![alt text](https://github.com/callous4567/UoE-Projects/blob/master/SimAndVis/C2/gliderspeed.png)
 
 ## hdfutils.py 
 Contains various utilities for writing data and results: see TGP2020, master-streams, and SHons2021, for other usages.
@@ -13,9 +15,11 @@ This class uses HDF5 and h5py to save data in a user-interpretable way- nice and
 
 ## multirun.py 
 Example file showing how to leverage multiprocessing to generate many soups simultaneously for "activity histogram"
-used to estimate mean equilibration times for soups of grid size N^2. 
+used to estimate mean equilibration times for soups of grid size N^2, using twod_gol.multigraph() to do so. 
 
-## twod_ising.py 
+![alt text](https://github.com/callous4567/UoE-Projects/blob/master/SimAndVis/C2/gol_probability.png)
+
+## twod_gol.py 
 
 Main file to use, which contains the bulk of the code. This runs the model, handles the model, graphs the model,
 and in general is the model. 
