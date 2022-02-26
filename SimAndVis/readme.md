@@ -10,5 +10,5 @@ The two-dimensional Ising model, with both Glauber and Kawasaki Dynamics, sped u
 ## C2 
 Conway's Game of Life, with a few other miscellaneous metric tools (like calculating the speeds of gliders, or for example, estimating the distribution of lifetimes for soups randomly generated at initialization.
 
-## C3 
+## C2_2
 The SIRS Model of Epidemics, albeit not "true SIRS" since it only uses four nearest neighbours instead of eight (though implementing this would only necessitate a few line changes in fast_sirs.) 
