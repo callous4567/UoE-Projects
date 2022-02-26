@@ -8,7 +8,7 @@ The two-dimensional Ising model, with both Glauber and Kawasaki Dynamics, sped u
 **Not graded or required by course**, to simulate the 2D XY Model (which is a vector-version of the 2D Ising Film.) Video examples linked. Quiver plotting with first-order gaussian-convolved divergence maps demonstrating vorticity. Phase plotting (0,2pi) demonstrating transitions. etc. Wolf Algorithm implementation is present, tested, and produces expected results (seemingly.) 
 
 ## C2 
-Unknown as of yet
+Conway's Game of Life, with a few other miscellaneous metric tools (like calculating the speeds of gliders, or for example, estimating the distribution of lifetimes for soups randomly generated at initialization.
 
 ## C3 
-Unknown as of yet 
+The SIRS Model of Epidemics, albeit not "true SIRS" since it only uses four nearest neighbours instead of eight (though implementing this would only necessitate a few line changes in fast_sirs.) 
