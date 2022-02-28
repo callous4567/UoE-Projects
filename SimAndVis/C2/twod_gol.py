@@ -17,9 +17,7 @@ import hdfutils
 import numpy as np
 import matplotlib.pyplot as plt
 import moviepy.video.io.ImageSequenceClip
-plt.rcParams['animation.ffmpeg_path'] = 'C:\\Users\\Callicious\\Documents\\Prog\\pycharm\\venv\\ffmpeg\\bin\\ffmpeg.exe'
-rc('font', **{'family': 'serif', 'serif': ['Computer Modern']})
-rc('text', usetex=True)
+from matplotlib.animation import FuncAnimation
 
 # Same conventions as twod_ising, for the most part.
 """
@@ -28,19 +26,12 @@ There are a few old bits from twod_ising, like measurements/equilibration: rest 
 """
 class twod_gol(object):
     # TODO: make sure the current init is fine. Remember we added input instead of two separate inits for multirun.
-    def __init__(self, lx=None, binrate=None,
-                 equilibration=None, measurements=None, not_up=True, identifier=None, checkpoint=False):
+    def __init__(self, lx=None, measurements=None, not_up=True, identifier=None, checkpoint=False):
         # This just lets you avoid dealing with __init__ if you want to run a method that doesn't need all this stuff.
         if lx!=None:
             # Initialization parameters.
             self.not_up = not_up
             self.lx = lx
-            # When running this myself, I don't want to specify this, so this is a dirty fix for the checkpoint.
-            if binrate == None:
-                self.binrate = 1e6  # 1e6 # binrate for animations. Every i'th sweep is selected as frames.
-            else:
-                self.binrate = binrate
-            self.equilibration = equilibration # In number of flips.
             self.measurements = measurements # In number of flips.
             self.extras = 100 # some extra sweeps to run after reaching equilibrium state (to prove equilibrium.)
             self.autocorrelation_length = 25000 # In number of flips.
@@ -53,20 +44,18 @@ class twod_gol(object):
             # If you want totally random, set not_up to True
             if not_up == True:
                 self.mat = self.rng.choice([False, True], size=(self.lx, self.lx))
-
             # Else, create an empty array, then put in the pattern (or load it) that you selected in not_up
             else:
                 # Empty slate
                 self.mat = np.zeros(shape=(self.lx, self.lx))
-                try:
-                    # Load pattern from file
-                    if not_up.split(".")[1] == "txt":
-                        self.plaintext(not_up)
+                # Load pattern from file
+                if len(not_up.split(".")) > 1 and not_up.split(".")[1] == "txt":
+                    self.plaintext(not_up)
                 # Or load from the predefined presets I've slapped in.
-                except:
+                else:
                     self.pattern(not_up)
             self.sweep = 0 # in NUMBER OF FLIPS
-            self.max_sweeps = self.equilibration + self.measurements + 1
+            self.max_sweeps = self.measurements
             self.delay_max = 5e-3
             self.directory = os.getcwd()
             self.filename = "datafile.hdf5"
@@ -87,12 +76,6 @@ class twod_gol(object):
                 except:
                     pass
                 self.animation_name = self.imgdir + "\\animation.mp4" # saving.
-            if __name__ == "__main__":
-                self.draw = True # set to True to produce a live animation.
-                self.framerate = 15  # for animated mp4 saved to file, if applicable. Set to 0 for no animation.
-            else:
-                self.draw = False # set to True to produce a live animation.
-                self.framerate = 0  # for animated mp4 saved to file, if applicable. Set to 0 for no animation.
             self.saveattempts = 5
             self.fast = fast_gol.fast_gol(lx)
             self.all_I = None
@@ -124,16 +107,14 @@ class twod_gol(object):
         plt.savefig(self.imgdir + "\\" + str(self.sweep) + ".png", dpi=300)
 
         # Run sim
-        if self.not_up == True:
-            while self.sweep < self.max_sweeps:
-                self.fast_gol()
-                # Plot every binrate (normally.)
-                if self.sweep % self.binrate == 0:
-                    im.set_array(self.mat)
-                    ax.set_title(("A = {0:.1f}").format(self.A))
-                    t1.set_text(str(self.sweep))
-                    # Preliminary Save
-                    plt.savefig(self.imgdir + "\\" + str(self.sweep) + ".png", dpi=300)
+        while self.sweep < self.max_sweeps:
+            self.fast_gol()
+            # Plot every single step.
+            im.set_array(self.mat)
+            ax.set_title(("A = {0:.1f}").format(self.A))
+            t1.set_text(str(self.sweep))
+            # Preliminary Save
+            plt.savefig(self.imgdir + "\\" + str(self.sweep) + ".png", dpi=300)
 
     # Load in a Plaintext following https://conwaylife.com/wiki/Plaintext guidelines. Filename WITH .txt.
     # Supports trailing zeros and empty lines.
@@ -175,6 +156,8 @@ class twod_gol(object):
         # Use Numpy Slicing to embed the pattern
         self.mat[mid - int(patshape[0]/2): mid - int(patshape[0]/2) +patshape[0],
         mid - int(patshape[1]/2): mid+patshape[1]-int(patshape[1]/2)] = lines
+
+        print("Sorted out the pattern, mate.")
 
     # Old bit of code to make text in the console appear slower and crisper (2nd year???)
     def time_delay(self, text):
@@ -244,16 +227,15 @@ class twod_gol(object):
                     ens = time.time()
                     mpl += (ens-mins)
                     break
-                # Plot every binrate (normally.)
-                if self.sweep % self.binrate == 0:
-                    mins = time.time()
-                    im.set_array(self.mat)
-                    ax.set_title(("A = {0:.1f}").format(self.A))
-                    t1.set_text(str(self.sweep))
-                    fig.canvas.draw()
-                    fig.canvas.flush_events()
-                    ens = time.time()
-                    mpl += (ens-mins)
+                # Plot every step
+                mins = time.time()
+                im.set_array(self.mat)
+                ax.set_title(("A = {0:.1f}").format(self.A))
+                t1.set_text(str(self.sweep))
+                fig.canvas.draw()
+                fig.canvas.flush_events()
+                ens = time.time()
+                mpl += (ens-mins)
 
             # Run it a bit more, to show it truly is "equilibrated." If not, throw a warning.
             self.time_delay(("Running {} extra sweeps to prove we're equilibrated.").format(self.extras))
@@ -276,20 +258,63 @@ class twod_gol(object):
             while self.sweep < self.max_sweeps:
                 self.fast_gol()
                 all_A.append(self.A)
-                # Plot every binrate (normally.)
-                if self.sweep % self.binrate == 0:
-                    mins = time.time()
-                    im.set_array(self.mat)
-                    ax.set_title(("A = {0:.1f}").format(self.A))
-                    t1.set_text(str(self.sweep))
-                    fig.canvas.draw()
-                    fig.canvas.flush_events()
-                    ens = time.time()
-                    mpl += (ens - mins)
+                # Plot every step.
+                mins = time.time()
+                im.set_array(self.mat)
+                ax.set_title(("A = {0:.1f}").format(self.A))
+                t1.set_text(str(self.sweep))
+                fig.canvas.draw()
+                fig.canvas.flush_events()
+                ens = time.time()
+                mpl += (ens - mins)
         # All done.
         end = time.time()
         self.time_delay(("Simulation finished. Took {0:.1f} seconds. Plotting stole approximately {1:.1f} seconds.").format(end - start, mpl))
         plt.close()
+
+    # Run the simulator (this is for the actual checkpoint rather than run_high for fun.)
+    """
+    Given that this simulation is very small, saving everything to file is perfectly reasonable.
+    I've removed save functionality from run_high (made for 200, 400x matrices, with 10^6 sweeps- too big.) 
+    """
+
+    def run_FuncAnimate(self):
+        # Calculate I for initial step
+        start = np.sum(self.mat)
+        self.A = start
+
+        # Custom colormap (blue and red.)
+        cmap = cm.get_cmap('bwr', 2)
+
+        # Set up figure, axes, etc
+        fig = plt.figure(figsize=(8, 8))
+        im = plt.imshow(self.mat, animated=True, cmap=cmap, aspect='equal', vmin=0, vmax=1)
+        plt.xlim([0, self.lx - 1])
+        plt.ylim([0, self.lx - 1])
+        # Set up image plot
+        legend_elements = [Patch(facecolor='red', label='Alive', edgecolor='black'),
+                           Patch(facecolor='blue', label='Dead', edgecolor='black')]
+        plt.legend(handles=legend_elements, loc='upper right')
+
+        # Set title.
+        t1 = plt.text(1, 1,"S = " + str(self.sweep) + "... A = " + str(int(self.A)), color="white", fontsize=20)
+
+        # Run Simulation.
+        self.time_delay("Starting Simulation..." + self.distinct)
+
+        # One loop specific for dealing with when we're after checking for "absorbing states"
+        def animate(i):
+            # Run it until we hit an absorbing state.
+            self.fast_gol()
+            im.set_array(self.mat)
+            t1.set_text("S = " + str(self.sweep) + "... A = " + str(int(self.A)))
+            return im, t1,
+
+        anim = FuncAnimation(fig=fig, func=animate, repeat=False, interval=1000 / 30, frames=self.max_sweeps, blit=True)
+        plt.show()
+        plt.close()
+
+
 
     # This is for the glider (specifically, tracking the glider, returning metrics, etc.)
     def run_glider(self):
@@ -578,7 +603,9 @@ class checkpoint(object):
         randyesno = str(input())
         if randyesno == "y":
             not_up = True
-        elif randyesno == 'n':
+            measure = int(1e6)
+            self.time_delay("We will run this simulation until the soup is stable.")
+        if randyesno == 'n':
             # Get the list of plaintexts
             files = os.listdir(os.getcwd() + "\\" + "plaintext")
             stringformat = ["- " + file + "\n" for file in files]
@@ -596,29 +623,14 @@ class checkpoint(object):
             self.time_delay("If selecting a plaintext, please include the file extension. \n"
                             "Note that some patterns may larger grids than the status quo of 50x50.")
             not_up = str(input())
-        if not_up == True:
-            self.time_delay("Since you selected a random state, we will run until we hit an absorbing state.")
-            measure = int(1e6)
-        else:
-            self.time_delay("You selected a pattern- how long do you want to run the simulation for? Give an integer.")
+            self.time_delay("How long do you want to run the simulation for, in sweeps? Give an integer.")
             measure = int(input())
-        equi = 0
-        return lx, equi, measure, not_up
+        return lx, measure, not_up
 
     # Run
     def run(self):
-        try:
-            lx, equi, measure, not_up = self.user_input()
-            model = twod_gol(lx=lx, binrate=1, equilibration=equi, measurements=measure, not_up=not_up, identifier=0,
-                             checkpoint=True)
-            model.run()
-        except Exception as e:
-            self.time_delay("An error occurred... \n"
-                            "You probably don't have the correct dependencies. \n"
-                            "If the error regards the existence of LaTex: delete lines 21,22 \n" 
-                            "If the error regards missing packages, please install them.\n")
-            print(e)
-
-# Run the checkpoint/etc.
-check = checkpoint()
-check.run()
+        lx, measure, not_up = self.user_input()
+        model = twod_gol(lx=lx, measurements=measure, not_up=not_up, identifier=0,
+                         checkpoint=True)
+        model.run() # alternatively use run_FuncAnimate for faster plotting (runs at 30 FPS nominally.)
+uwao = checkpoint().run()
