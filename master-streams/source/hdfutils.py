@@ -2,6 +2,7 @@ import os
 import h5py
 import nexusformat.nexus as nx
 import astropy
+from astropy.io.misc import hdf5
 import numpy as np
 import pandas
 

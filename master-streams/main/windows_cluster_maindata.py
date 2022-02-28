@@ -6,6 +6,7 @@ import galcentricutils
 import graphutils
 import hdfutils
 import windows_directories
+import time
 
 # Clustering parameters/etc
 arrayinfominpars = []
@@ -26,7 +27,7 @@ with open(windows_directories.clusterdir + "\\" + "fullgroup.cluster.txt", 'wb')
 numclust = galcentricutils.compclust().nclust_get(clustered)
 savedexdir = "\\clustered\\fullgroup_clustered_" + str(numclust) + "_clusters_found"
 data = np.array(data)
-graphutils.threed_graph().kmeans_L_array(data, clustered, savedexdir, False)
+graphutils.threed_graph().kmeans_L_array(data, clustered, savedexdir, browser=False,  outliers=False)
 
 
 # Test out the vasiliev graphing for this set...

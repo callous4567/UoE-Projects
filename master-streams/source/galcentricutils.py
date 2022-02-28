@@ -8,6 +8,8 @@ import munkres
 from astropy.stats import sigma_clipped_stats
 from astropy.table import Table
 from matplotlib import pyplot as plt
+from numba import njit, types
+from numba.experimental import jitclass
 from numpy.random import bit_generator
 from scipy.optimize import linear_sum_assignment
 from sklearn.metrics.cluster import contingency_matrix
@@ -408,19 +410,32 @@ class angular(object):
         mom = np.cross(pos, vel)
         return mom
 
-    def vec_latipolar(self, vec):
-        polar_pos = self.vec_polar(vec)
+    # POS IS NUMPY ARRAY NOT LIST. If an error is thrown, this is why.
+    @staticmethod
+    @njit
+    def vec_latipolar(pos):
+        pos = pos[0:3]
+        radius = np.sqrt(pos[0] ** 2 + pos[1] ** 2 + pos[2] ** 2)
+        theta = np.arccos(pos[2] / radius)
+        phi = np.arctan2(pos[1], pos[0])
+        if phi < 0:
+            phi += 2 * np.pi
+        theta, phi = np.degrees(theta), np.degrees(phi)
+        polar_pos = np.array([radius, theta, phi])
         polar_pos[1] = 90 - polar_pos[1]
         return polar_pos
 
-    def vec_polar(self, vec):
-        pos = vec[0:3]
-        radius = np.linalg.norm(pos)
-        theta = math.acos(pos[2]/radius)
-        phi = math.atan2(pos[1],pos[0])
+    # POS IS NUMPY ARRAY NOT LIST. If an error is thrown, this is why.
+    @staticmethod
+    @njit
+    def vec_polar(pos):
+        pos = pos[0:3]
+        radius = np.sqrt(pos[0]**2 + pos[1]**2 + pos[2]**2)
+        theta = np.arccos(pos[2]/radius)
+        phi = np.arctan2(pos[1],pos[0])
         if phi < 0:
             phi += 2*np.pi
-        theta, phi = math.degrees(theta), math.degrees(phi)
+        theta, phi = np.degrees(theta), np.degrees(phi)
         polar_pos = np.array([radius, theta, phi])
         return polar_pos
 
@@ -459,6 +474,9 @@ class angular(object):
 
         return table
 
+uwao = np.array([1,2,3])
+uwu = angular()
+uwu.vec_polar(uwao)
 # Galactocentric Cartesian system rotations/etc.
 # x-convention. Recalculates angular momentum, too, in the new system.
 # Passive transformation: gives values in the new system, alongside the unit vectors of the new system (in the old.)
@@ -729,7 +747,6 @@ class greatcount(object):
     dtheta is the HALF WIDTH of the GCC count. HALF WIDTH MATE!!! 
     """
     # Given a table, theta, phi, delta-theta, grab all members within this cell from table, produce new table.
-    # NOTE: Poor Performance. If running optimization, switch to arrays and indices. Rebuild table post-calculation.
     def gcc_table(self, table, theta, phi, dtheta, radmin):
         # Set up unit vector for GCC
         theta, phi, dtheta = math.radians(theta), math.radians(phi), math.radians(dtheta)
@@ -834,7 +851,7 @@ class greatcount(object):
 
     # Generate a hemispheres-worth of equally separated n-points. RETURNS IN RADIANS.
     # A simple scheme for generating nearly uniform distribution of antipodally
-    # symmetric points on the unit sphere
+    # symmetric points on the unit sphere (for great circle generation.)
     # Cheng Guan Koay∗
     def halfgridgen(self, K_top):
         # Initial guess
@@ -956,10 +973,38 @@ class greatcount(object):
         thetas, phis, indices = np.array(acceptphetaphiindices).T
         return thetas, phis, indices
 
-    # Generate a set of theta, phi (in galcentricpolar) for a given GCC for scatterplot
+# Class for fitting greatcounts to a clustering. TODO: Always pass Numpy Arrays instead of lists, unless specified.
+@jitclass
+class greatfit(object):
+    def __init__(self):
+        none = None
+
+    # Unlike the above, the new table retains original data, but has a new column ("greatcount") with TRUE or FALSE
+    # TODO: TRUE is inside the circle, FALSE is not. This is to permit correct cluster comparisons down the line.
+    # "radmin" has been removed, given we already clean the data in ascii_helioport.
+    def gcc_table_retain(self, table, theta, phi, dtheta):
+        # Set up unit vector for GCC
+        theta, phi, dtheta = math.radians(theta), math.radians(phi), math.radians(dtheta)
+        polar_unit = np.array([np.sin(theta) * np.cos(phi), np.sin(theta) * np.sin(phi), np.cos(theta)])
+        # Get unit vectors for all the targets
+        pos = np.array([table['x'], table['y'], table['z']]).T
+        radii = np.array([np.linalg.norm(d) for d in pos])
+        pos_unit = np.array([pos[d] / radii[d] for d in range(len(pos))])
+        # Dot them
+        dotted = [np.dot(polar_unit, pos_unit[d]) for d in range(len(pos_unit))]
+        condition = np.sin(dtheta)
+        # Check for conditions
+        truefalse = []
+        for num, item in enumerate(dotted):
+            truefalse.append(True) if abs(item) <= condition else truefalse.append(False)
+        # Put them inside table and return table
+        table['greatcount'] = truefalse
+        return table
+
+    # Generate a set of theta, phi (in galcentricpolar) for a given GCC for scatterplot. Now with Numba.
     def gcc_gen(self, n_points, theta, phi):
         # Generate coordinate system for the great circle for coordinate decomposition
-        theta, phi = math.radians(theta), math.radians(phi)
+        theta, phi = np.radians(theta), np.radians(phi)
         polar_z = np.array([np.sin(theta) * np.cos(phi),
                             np.sin(theta) * np.sin(phi),
                             np.cos(theta)])
@@ -975,15 +1020,69 @@ class greatcount(object):
         # Set up range of phi (within the GCC coordinate frame)
         phirange = np.linspace(0, 2*np.pi, n_points)
 
-        # Set up all the vectors for the periphery of the GCC (unit vectors.)
-        gcc_univects = np.array([polar_x*math.cos(d) + polar_y*math.sin(d) for d in phirange])
+        # Set up all the vectors for the periphery of the GCC (unit vectors) as an empty
+        gcc_univects = np.empty((len(phirange), 3), dtype=types.float64)
+        # Populate it
+        for num, d in enumerate(phirange):
+            gcc_univects[num] = polar_x*np.cos(d) + polar_y*np.sin(d)
+
+        # Specify locally, since we can't draw from separate classes inside a static method with njit.
+        def vec_polar(pos):
+            pos = pos[0:3]
+            radius = np.sqrt(pos[0] ** 2 + pos[1] ** 2 + pos[2] ** 2)
+            theta = np.arccos(pos[2] / radius)
+            phi = np.arctan2(pos[1], pos[0])
+            if phi < 0:
+                phi += 2 * np.pi
+            theta, phi = np.degrees(theta), np.degrees(phi)
+            polar_pos = np.array([radius, theta, phi])
+            return polar_pos
+
+        # Create an empty to populate
+        polars = np.empty((len(gcc_univects), 3), dtype=types.float64)
 
         # Get theta and phi for gcc_univects in the non-GCC frame
-        # polar_pos = np.array([radius, theta, phi])
-        polars = np.array([angular().vec_polar(d) for d in gcc_univects]).T
+        for num, univect in enumerate(gcc_univects):
+            polars[num] = vec_polar(univect)
+        polars = polars.T
+
         thetas, phis = polars[1],polars[2]
 
         return thetas, phis
+
+    # Given a set of points in galcentricpolar on the unit sphere, get the least-squares distance to the theta/phi.
+    def least_squares(self, theta_data, phi_data, theta_pole, phi_pole, resolution):
+        # Generate the unit vectors for the data
+        dx, dy, dz = np.cos(phi_data)*np.sin(theta_data),np.sin(phi_data)*np.sin(theta_data),np.cos(theta_data)
+        data_vects = np.empty((len(dx), 3), dtype=types.float64)
+        data_vects[:,0] = dx
+        data_vects[:,1] = dy
+        data_vects[:,2] = dz
+
+        # Generate GCC Data
+        gcc_thetas, gcc_phis = self.gcc_gen(resolution, theta_pole, phi_pole)
+
+        # Unit vectors for GCC Data
+        gx, gy, gz  = np.cos(gcc_phis)*np.sin(gcc_thetas), np.sin(gcc_phis)*np.sin(gcc_thetas), np.cos(gcc_thetas)
+        gcc_vectrs = np.empty((len(gx), 3), dtype=types.float64)
+        gcc_vectrs[:, 0] = gx
+        gcc_vectrs[:, 1] = gy
+        gcc_vectrs[:, 2] = gz
+
+        # For each point in the data, find the minimum point in the GCC, get the distance, and sum
+        squaresum = 0
+        for point in data_vects:
+            distances = point - gcc_vectrs
+            distances = distances[0]**2 + distances[1]**2 + distances[2]**2
+            squaresum += np.min(distances)
+
+
+        return squaresum
+
+
+
+owo = greatfit()
+owo.least_squares(np.array([0,1]), np.array([0,1]), 0.5, 0.5, 1000)
 
 # Carry out a clustering (HDBSCAN-oriented).
 # Needs array [L1,L2,L3...]
@@ -1066,7 +1165,6 @@ class cluster3d(object):
     # Deprecated basically (designed for kmeans_L/xmeans_L graph)
     # Keeping it around in case it needs to be revived for use. 
     def hdbs(self, table, browser, minpar):
-        table = self.clean(table, 5)
         L = np.array([table['Lx'], table['Ly'], table['Lz']]).T
         hdbs = hdbscan.HDBSCAN(min_cluster_size=minpar[0],
                                min_samples=minpar[1],
@@ -1131,7 +1229,7 @@ class genclust3d(object):
 
     # Visualize the clusters we have created, with N (static)-points per cluster for a convex hull about data.
     def mucov_visualize(self, mucovs,N):
-        graphutils.threed_graph().kmeans_L_multinormal_generated(mucovs,N)
+        graphutils.threed_graph().kmeans_L_multinormal_generated(mucovs,N,N)
 
     # Generate data using gen_mucov mu/cov
     """
@@ -1225,58 +1323,7 @@ class compclust(object):
         # Pass this to graphutils plotting to generate a plot
         graphutils.twod_graph().nclust_n(arrays, group)
 
-    # Given two clusterings (clust1,clust2), map clust2 onto clust1 and return remapped clust 2 (same original format.)
-    # This only works for NxN cardinality (equal set size) and leverages the hungarian algorithm.
-    """
-    Thank Pallie/Aaron!
-    https://stackoverflow.com/questions/55258457/
-    find-mapping-that-translates-one-list-of-clusters-
-    to-another-in-python
-    """
-    def compclust(self, clust1, clust2):
-        contMatrix = contingency_matrix(clust1, clust2)
-        labelMatcher = munkres.Munkres()
-        labelTranlater = labelMatcher.compute(contMatrix.max() - contMatrix)
-        uniqueLabels1 = list(set(clust1))
-        uniqueLabels2 = list(set(clust2))
-        tranlatorDict = {}
-        for thisPair in labelTranlater:
-            print(thisPair)
-            tranlatorDict[uniqueLabels2[thisPair[1]]] = uniqueLabels1[thisPair[0]]
-
-        return np.array([tranlatorDict[label] for label in clust2])
-
-    # Given two clusterings, do the above, but in rectangular fashion (i.e. multiple matches to each.)
-    # Thanks Sascha for verbatim solution (we're modifying it, though.)
-    # https://stackoverflow.com/questions/50305614/finding-an-optimal-selection-in-a-2d-matrix-with-given-constrains
-    def compclust_multi(self, clust1, clust2):# Generate cost/etc matrices and do the map for lowest set cardinality
-        contmat = contingency_matrix(clust1, clust2)
-        max_cost = np.amax(contmat)
-        harvest_profit = max_cost - contmat
-        row_ind, col_ind = linear_sum_assignment(harvest_profit)
-        sol_map = np.zeros(contmat.shape, dtype=bool)
-        sol_map[row_ind, col_ind] = True
-
-        # Visualize plots (thanks Sascha!)
-        f, ax = plt.subplots(2, figsize=(9, 6))
-        sns.heatmap(contmat, annot=True, linewidths=.5, ax=ax[0], cbar=False,
-                    linecolor='black', cmap="YlGnBu")
-        sns.heatmap(contmat, annot=True, mask=~sol_map, linewidths=.5, ax=ax[1],
-                    linecolor='black', cbar=False, cmap="YlGnBu")
-        plt.tight_layout()
-        plt.show()
-
-        # Remap clust 2
-        row_ind, col_ind = row_ind - 1, col_ind - 1
-        newclust = np.zeros(shape=np.shape(clust2), dtype=int)
-        for thisPair in zip(row_ind, col_ind):
-            for num,clust_id in enumerate(clust2):
-                if clust_id == thisPair[1]:
-                    newclust[num] = thisPair[0]
-        return newclust
-
-
-    # The pre-final rendition:
+    # The final rendition of compclust.
     """
     Compute cluster match via hungarian method
     If the 2nd clustering has say 9 clusterings while the first has 8, take the "least quality" match and relabel
@@ -1291,6 +1338,7 @@ class compclust(object):
         sol_map = np.zeros(contmat.shape, dtype=bool)
         sol_map[row_ind, col_ind] = True
 
+        """
         # Visualize plots (thanks Sascha!)
         f, ax = plt.subplots(2, figsize=(9, 6))
         sns.heatmap(contmat, annot=True, linewidths=.5, ax=ax[0], cbar=False,
@@ -1298,7 +1346,7 @@ class compclust(object):
         sns.heatmap(contmat, annot=True, mask=~sol_map, linewidths=.5, ax=ax[1],
                     linecolor='black', cbar=False, cmap="YlGnBu")
         plt.tight_layout()
-        plt.show()
+        plt.show() """
 
         # Row is "clust1" and col is "clust2" and adjust for the fact that -1 is now 0
         # This is our mapping for the columns (clust2) to the rows (clust1)
@@ -1310,7 +1358,7 @@ class compclust(object):
             for num,clust_id in enumerate(clust2):
                 if clust_id == thisPair[1]:
                     newclust[num] = thisPair[0]
-
+ 
         # Identify which clustering is the one with a higher number of clusters
         """
         If the 2nd cluster is np.max higher than the first, then we have a problem
@@ -1356,4 +1404,118 @@ class compclust(object):
                     if clust_id == not_in_index:
                         newclust[num] = not_in_indices[mun]
 
+        return newclust
+
+    # Given a stack of clusterings, [c1 c2 ... cN], compute percentage memberships. Assume clusterings as lists.
+    """
+    Load in clusterings
+    Find out percentage times that each star ends up in a given cluster
+    Only consider clusters up to the "maximum_cluster" (-1 is still counted as -1.) 
+    We assume "maximum_cluster" is non-pythonic np.max(clustering) 
+    Any clusters past that point just count as "noise" and we don't calculate the percentages for these
+    (i.e. the total sum doesn't have to be 100%. We just calculate for the first maximum_viable, get a % for that,
+    then attribute (100 - that) for the percentage lost to the random noisy clusters.) 
+    We assume that each clustering still has noise cluster "-1" from HDBSCAN included
+    This will be counted separately to the noisy clusters. 
+    """
+    def compclust_multipercentage(self, clusterings, maximum_cluster):
+        # Array up
+        clusterings = np.array(clusterings)
+        # Add 1 to all clusters (to correct indices from -1 to 0. 0 is now noise from HDBSCAN
+        clusterings += 1
+        # Create an np array, up to "maximum_cluster," with same length as "clusterings."
+        numstars = len(clusterings[0])
+        """
+        +1 for the fact that if max = 8, we have 0 (hence 9 clusters.)
+        +1 for the fact that -1 exists.
+        Hence +2 for shape of percent_array 
+        """
+        percent_array = np.zeros(shape=(numstars, maximum_cluster + 2))
+        # Iterate through each clustering and add to percent_array (we'll normalize later.)
+        for clustering in clusterings:
+            for star in range(numstars):
+                # Only bother within maximum_cluster: rest of clusters are "noisy ones" outside of -1 noise
+                """
+                +1 for the fact clusterings += 1 
+                """
+                if clustering[star] <= maximum_cluster + 1:
+                    percent_array[star][clustering[star]] += 1
+                else:
+                    pass
+        # Normalize for the total number of clusterings we monte-carlo'd
+        percent_array /= len(clusterings)
+        # Go through and get the "maximum_clustering" and "maximum_fraction" for each one
+        max_clusts, max_fracs = [],[]
+        for star in range(numstars):
+            max_clust = np.argmax(percent_array[star])
+            max_frac = np.max(percent_array[star])
+            max_clusts.append(max_clust)
+            max_fracs.append(max_frac)
+        # Astropy it up
+        cluster_labels = [str(d) for d in np.arange(-1, maximum_cluster + 1, 1)]
+        print(percent_array)
+        table = Table(data=percent_array, names=cluster_labels)
+        # probable_clust gives the most probabilistic cluster designation, probability is the probability of it
+        table['probable_clust'], table['probability'] = max_clusts, max_fracs
+        table['probable_clust'] -= 1
+        # Also go through and create a second table, with total "memberships" and the like
+        clustships = np.zeros(maximum_cluster + 2)
+        for max_clust in max_clusts:
+            clustships[max_clust] += 1
+        clustships /= numstars
+        table_2 = Table(clustships, names=cluster_labels)
+
+        # Return
+        return table, table_2
+
+    # TODO: Deprecated
+    # Given two clusterings (clust1,clust2), map clust2 onto clust1 and return remapped clust 2 (same original format.)
+    # This only works for NxN cardinality (equal set size) and leverages the hungarian algorithm.
+    """
+    Thank Pallie/Aaron!
+    https://stackoverflow.com/questions/55258457/
+    find-mapping-that-translates-one-list-of-clusters-
+    to-another-in-python
+    """
+    def compclust(self, clust1, clust2):
+        contMatrix = contingency_matrix(clust1, clust2)
+        labelMatcher = munkres.Munkres()
+        labelTranlater = labelMatcher.compute(contMatrix.max() - contMatrix)
+        uniqueLabels1 = list(set(clust1))
+        uniqueLabels2 = list(set(clust2))
+        tranlatorDict = {}
+        for thisPair in labelTranlater:
+            print(thisPair)
+            tranlatorDict[uniqueLabels2[thisPair[1]]] = uniqueLabels1[thisPair[0]]
+
+        return np.array([tranlatorDict[label] for label in clust2])
+
+    # TODO: Deprecated
+    # Given two clusterings, do the above, but in rectangular fashion (i.e. multiple matches to each.)
+    # Thanks Sascha for verbatim solution (we're modifying it, though.)
+    # https://stackoverflow.com/questions/50305614/finding-an-optimal-selection-in-a-2d-matrix-with-given-constrains
+    def compclust_multi(self, clust1, clust2):# Generate cost/etc matrices and do the map for lowest set cardinality
+        contmat = contingency_matrix(clust1, clust2)
+        max_cost = np.amax(contmat)
+        harvest_profit = max_cost - contmat
+        row_ind, col_ind = linear_sum_assignment(harvest_profit)
+        sol_map = np.zeros(contmat.shape, dtype=bool)
+        sol_map[row_ind, col_ind] = True
+
+        # Visualize plots (thanks Sascha!)
+        f, ax = plt.subplots(2, figsize=(9, 6))
+        sns.heatmap(contmat, annot=True, linewidths=.5, ax=ax[0], cbar=False,
+                    linecolor='black', cmap="YlGnBu")
+        sns.heatmap(contmat, annot=True, mask=~sol_map, linewidths=.5, ax=ax[1],
+                    linecolor='black', cbar=False, cmap="YlGnBu")
+        plt.tight_layout()
+        plt.show()
+
+        # Remap clust 2
+        row_ind, col_ind = row_ind - 1, col_ind - 1
+        newclust = np.zeros(shape=np.shape(clust2), dtype=int)
+        for thisPair in zip(row_ind, col_ind):
+            for num,clust_id in enumerate(clust2):
+                if clust_id == thisPair[1]:
+                    newclust[num] = thisPair[0]
         return newclust

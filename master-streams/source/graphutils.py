@@ -7,6 +7,7 @@ import numpy as np
 from astropy.table import Table, unique, vstack
 
 # Our own stuff.
+from matplotlib.patches import Patch
 
 import galcentricutils
 import hdfutils
@@ -508,8 +509,9 @@ class spec_graph(object):
     radec plot. 
     Select a cluster_id, otherwise all are plotted. 
     Set vasiliev to True to display his Sgr_snapshot (with LMC.) 
+    optionally supply gcc_radecs = [[ras],[decs]] with greatcircle radecs
     """
-    def clust_radec(self, table, clustering, cluster_id=False, vasiliev=False):
+    def clust_radec(self, table, clustering, cluster_id=False, vasiliev=False, savedexdir=None, gcc_radecs=None):
         if cluster_id is False:
             # Get the n0 of clusters
             nclust = np.max(clustering) + 1
@@ -569,8 +571,15 @@ class spec_graph(object):
             axs.grid(color="white")
             axs.set(xlabel=r'$\alpha$', ylabel=r'$\delta$')
 
+            # Create save directory/save
+            if savedexdir != None:
+                try:
+                    os.mkdir(windows_directories.imgdir + "\\" + "vasiliev")
+                except:
+                    pass
+                plt.savefig(windows_directories.imgdir + "\\" + "vasiliev"+ "\\" + savedexdir + ".png", dpi=300)
             # Show
-            plt.show()
+            #plt.show()
 
         else:
             # Grab the ra/dec list for the cluster_id
@@ -582,7 +591,9 @@ class spec_graph(object):
             # ICRS-up the thing and do the plot...
             fig, axs = plt.subplots(nrows=1, ncols=1, dpi=300)
             # first do Vasilievs, though.
+            legend_elements = []
             if vasiliev==True:
+                legend_elements.append(Patch(edgecolor='white',facecolor='gray',label="Vasiliev Model"))
                 simdir = windows_directories.datadir + "\\vasiliev\\Sgr_snapshot"
                 simfile = "simdata.hdf5"
                 writer = hdfutils.hdf5_writer(simdir, simfile)
@@ -595,14 +606,155 @@ class spec_graph(object):
             axs.grid(True, which='major', alpha=1, linewidth=0.25, color="black")  # Enable grids on subplot
             axs.grid(True, which='minor', alpha=1, linewidth=0.25, color="black")
             axs.scatter(tab_x, tab_y, color="red", s=5, marker="s")
+            legend_elements.append(Patch(edgecolor='white',
+                                         facecolor='red',
+                                         label="Stars"))
+            # We can also add a great circle (though this necessitates a legend.)
+            if gcc_radecs != None:
+                gccras, gccdecs = gcc_radecs
+                axs.scatter(gccras, gccdecs, color="blue", s=0.1)
+                legend_elements.append(Patch(edgecolor='white',facecolor='blue',label='GCC Fit'))
+            plt.legend(loc='upper right', handles=legend_elements)
             axs.set_facecolor("k")
             plt.gca().invert_xaxis()
             axs.set(xlabel=r'$\alpha$', ylabel=r'$\delta$')
             axs.grid(color="white")
-            # We can also add a great circle...
-            #gcc = galcentricutils.greatcount().gcc_gen(10000, 45, 5)  # thetas, phis, degrees.
-            #axs.scatter(gcc[1], 90 - gcc[0], color="blue", s=0.1)
-            plt.show()
+            # Create save directory/save
+            if savedexdir != None:
+                try:
+                    os.mkdir(windows_directories.imgdir + "\\" + "vasiliev")
+                except:
+                    pass
+                plt.savefig(windows_directories.imgdir + "\\" + "vasiliev"+ "\\" + savedexdir + ".png", dpi=300)
+            #plt.show()
+
+    # above but for theta/phi
+    def clust_thetaphi(self, table, clustering, cluster_id=False, vasiliev=False, savedexdir=None, gcc_thetaphis=None):
+        if cluster_id is False:
+            # Get the n0 of clusters
+            nclust = np.max(clustering) + 1
+            fig, axs = plt.subplots(nrows=1, ncols=1, dpi=300)
+
+            # first do Vasilievs, though.
+            if vasiliev==True:
+                simdir = windows_directories.datadir + "\\vasiliev\\Sgr_snapshot"
+                simfile = "simdata.hdf5"
+                writer = hdfutils.hdf5_writer(simdir, simfile)
+                sim_table = writer.read_table("Sgr_snapshot", "astrotable")
+                # Convert sim_table to galcentric
+                converter = galcentricutils.galconversion()
+                converter.solinfo_grab(windows_directories.sourcedir, "solar_info.dat")
+                converter.solgal_set()
+                sim_table = converter.nowrite_GAL_to_GALCENT(sim_table)
+                # Get polar coordinates for vasiliev sim
+                sim_table = galcentricutils.angular().get_polar(sim_table)
+                tab_x, tab_y = sim_table['theta'], sim_table['phi']
+                axs.scatter(tab_x, tab_y, color="gray", s=0.01, marker=".")
+
+            # Sort table by clustering (not needed.)
+            table['cluster'] = clustering
+            table_by_clust = table.group_by("cluster")
+
+            # Miscellaneous thing to ensure non-cyclical rainbow colourmap.
+            cm = plt.get_cmap('gist_rainbow')
+            axs.set_prop_cycle('color', [cm(1. * i / nclust) for i in range(nclust)])
+
+            # Define an arbitrary function to set the scale based on the number of stars in the clustering.
+            # This is just to ensure that the larger clusters don't just block out the smaller ones.
+            scale = lambda n: 0.1 + 5*((30/n)**0.8)
+
+            # Save the masked tables
+            masked_tables = []
+            masked_tables_lengths = []
+
+            # Get masked tables for each cluster, alongside the number of stars in each
+            for cluster_id in range(nclust):
+                clustmask = table_by_clust.groups.keys["cluster"] == cluster_id
+                masked_table = table_by_clust.groups[clustmask]
+                masked_tables.append(masked_table)
+                masked_tables_lengths.append(len(masked_table))
+
+            # Sort the tables and table scales (just to ensure we don't hide away small ones under big ones)
+            sorted_tables = [x for (y, x) in sorted(zip(masked_tables_lengths, masked_tables), key=lambda pair: pair[0])]
+            sorted_tables.reverse()
+
+            # Now, plot for the sorted tables
+            for sorted_table in sorted_tables:
+                tab_x, tab_y = sorted_table['theta'], sorted_table['phi']
+                axs.scatter(tab_x, tab_y, s=scale(len(sorted_table)), marker="s")
+
+            # Misc axis things
+            axs.set_facecolor("k")
+            plt.gca().invert_xaxis()
+            axs.grid(True, which='major', alpha=1, linewidth=0.25)
+            axs.grid(True, which='minor', alpha=1, linewidth=0.25)
+            axs.set(xlabel=r'$\theta$',
+                    ylabel=r'$\phi$')
+            axs.grid(color="white")
+
+            # Create save directory/save
+            if savedexdir != None:
+                try:
+                    os.mkdir(windows_directories.imgdir + "\\" + "vasiliev")
+                except:
+                    pass
+                plt.savefig(windows_directories.imgdir + "\\" + "vasiliev"+ "\\" + savedexdir + "_thetaphi.png", dpi=300)
+            # Show
+            #plt.show()
+
+        else:
+            # Grab the ra/dec list for the cluster_id
+            table['cluster'] = clustering
+            table_by_clust = table.group_by("cluster")
+            clustmask = table_by_clust.groups.keys["cluster"] == cluster_id
+            masked_table = table_by_clust.groups[clustmask]
+
+            # ICRS-up the thing and do the plot...
+            fig, axs = plt.subplots(nrows=1, ncols=1, dpi=300)
+            # first do Vasilievs, though.
+            legend_elements = []
+            if vasiliev==True:
+                simdir = windows_directories.datadir + "\\vasiliev\\Sgr_snapshot"
+                simfile = "simdata.hdf5"
+                writer = hdfutils.hdf5_writer(simdir, simfile)
+                sim_table = writer.read_table("Sgr_snapshot", "astrotable")
+                # Convert sim_table to galcentric
+                converter = galcentricutils.galconversion()
+                converter.solinfo_grab(windows_directories.sourcedir, "solar_info.dat")
+                converter.solgal_set()
+                sim_table = converter.nowrite_GAL_to_GALCENT(sim_table)
+                # Get polar coordinates for vasiliev sim
+                sim_table = galcentricutils.angular().get_polar(sim_table)
+                tab_x, tab_y = sim_table['theta'], sim_table['phi']
+                axs.scatter(tab_x, tab_y, color="gray", s=0.01, marker=".")
+                legend_elements.append(Patch(edgecolor='white',facecolor='gray',label="Vasiliev Model"))
+            # Then our clustering...
+            tab_x, tab_y = masked_table['theta'], masked_table['phi']
+            axs.grid(True, which='major', alpha=1, linewidth=0.25, color="black")  # Enable grids on subplot
+            axs.grid(True, which='minor', alpha=1, linewidth=0.25, color="black")
+            axs.scatter(tab_x, tab_y, color="red", s=5, marker="s")
+            legend_elements.append(Patch(edgecolor='white',
+                                         facecolor='red',
+                                         label="Stars"))
+            # We can also add a great circle (though this necessitates a legend.)
+            if gcc_thetaphis != None:
+                gccthetas, gccphis = gcc_thetaphis
+                axs.scatter(gccthetas, gccphis, color="blue", s=0.1)
+                legend_elements.append(Patch(edgecolor='white',facecolor='blue',label='GCC Fit'))
+            plt.legend(loc='upper right', handles=legend_elements)
+            axs.set_facecolor("k")
+            plt.gca().invert_xaxis()
+            axs.grid(color="white")
+            axs.set(xlabel=r'$\theta$',
+                    ylabel=r'$\phi$')
+            # Create save directory/save
+            if savedexdir != None:
+                try:
+                    os.mkdir(windows_directories.imgdir + "\\" + "vasiliev")
+                except:
+                    pass
+                plt.savefig(windows_directories.imgdir + "\\" + "vasiliev"+ "\\" + savedexdir + "_thetaphi.png", dpi=300)
+            #plt.show()
 
     # Misc func for handling image tiling.
     # https://stackoverflow.com/questions/37921295/python-pil-image-make-3x3-grid-from-sequence-images
@@ -683,4 +835,6 @@ class spec_graph(object):
             except:
                 print("Failed removing image in graphtuils/sofie", image)
                 time.sleep(9999999999)
+
+
 

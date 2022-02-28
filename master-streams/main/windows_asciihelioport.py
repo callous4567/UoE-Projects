@@ -55,6 +55,9 @@ for n,d in enumerate(asciis):
     d.table = galcent.nowrite_GAL_to_GALCENT(d.table)
     d.table = galcentricutils.angular().get_momentum(d.table)
 
+    # Also get the Galcentric Polars
+    d.table = galcentricutils.angular().get_polar(d.table)
+
     # Remove stars within a certain radius (set to 20 kpc in this case.)
     d.table = galcentricutils.cluster3d().r_clean(d.table, minimum_radius=20)
 

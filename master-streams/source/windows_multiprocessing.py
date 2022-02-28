@@ -236,5 +236,3 @@ def do_hdbscan_LE(arrayinfominpar):
     savedexdir = "kmeans_html\\duplimonte_kmeanshtml\\" + arrayinfo[0] + "\\" + arrayinfo[1] + "_WITH_ENERGY"
     graphutils.threed_graph().kmeans_L_array(data, clustered, savedexdir, False, False)
 
-
-# Will relabel clust2 to clust1 (and save the excess.)
