@@ -3,7 +3,8 @@ import ascii_info
 import windows_multiprocessing
 
 """
-Just to generate artificial momentum sets for clustering.
+Just to generate artificial momentum sets for clustering. 
+Now also generates the spatial bit, too, and packages LXYZ with XYZ inside a table and saves this, too.
 Important note: You need to ensure that panda_raw has covariance matrices and means already in there.
 Just run monte_multitable to set this up and you'll be fine (that generates panda_raw anyway.)
 """

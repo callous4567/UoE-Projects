@@ -1,9 +1,8 @@
 import copy
 import pickle
 import time
-import astropy
+
 import pandas
-import scipy
 import munkres
 from astropy.stats import sigma_clipped_stats
 from astropy.table import Table
@@ -17,7 +16,6 @@ from sympy import *
 import math
 import seaborn as sns
 import ascii_info
-import energistics
 import graphutils
 import hdfutils
 import os
@@ -28,9 +26,7 @@ from astropy.coordinates import galactocentric_frame_defaults
 import astropy.units as u
 import plotly.io as plio
 import hdbscan
-from scipy.spatial import ConvexHull
 import windows_directories
-from hdbscan import flat
 plio.renderers.default = "browser"
 # SOME NOTES
 """
@@ -38,6 +34,20 @@ plio.renderers.default = "browser"
 - The spherical representation uses declination-based polar angle: not typical mathematical polar angle. 
 - Galactic Frame is right handed, too. X to the centre, Y to the left, Z upwards to NGP. 
 - Work in Galactic or Galactocentric- SCREW ICRS APPARENTLY. 
+
+
+
+In Astropy's words:
+-------------------
+The position of the Sun is assumed to be on the x axis of the final, 
+right-handed system. That is, the x axis points from the position of 
+the Sun projected to the Galactic midplane to the Galactic center – 
+roughly towards (l,b)=(0∘,0∘). For the default transformation (roll=0∘), 
+the y axis points roughly towards Galactic longitude l=90∘, and the z 
+axis points roughly towards the North Galactic Pole (b=90∘).
+
+
+
 """
 
 # TODO: 2D clustering like Sofie Groningen Paper (see for final method comparison.)
@@ -328,7 +338,7 @@ class galconversion(object):
 
         return l, b, distance, dmul, dmub, vlos
 
-# Some tools for spherical-polar angular-related things.
+# Some tools for spherical-polar/cylindrical angular-related things.
 class angular(object):
     def __init__(self):
         self.null = "null"
@@ -379,7 +389,7 @@ class angular(object):
         table['theta'] = 90 - table['theta']
         return table
 
-    # Non-latitude definition (regular mathematical) where NGP is 0 deg theta.
+    # Non-latitude definition (regular mathematical) where NGP is 0 deg theta. Returns in degrees.
     def get_polar(self, table):
         pos = np.array([table['x'], table['y'], table['z']]).T
         radii = np.array([np.linalg.norm(d) for d in pos])
@@ -412,7 +422,7 @@ class angular(object):
 
     # POS IS NUMPY ARRAY NOT LIST. If an error is thrown, this is why.
     @staticmethod
-    @njit
+    @njit(fastmath=True)
     def vec_latipolar(pos):
         pos = pos[0:3]
         radius = np.sqrt(pos[0] ** 2 + pos[1] ** 2 + pos[2] ** 2)
@@ -425,9 +435,9 @@ class angular(object):
         polar_pos[1] = 90 - polar_pos[1]
         return polar_pos
 
-    # POS IS NUMPY ARRAY NOT LIST. If an error is thrown, this is why.
+    # POS IS NUMPY ARRAY NOT LIST. If an error is thrown, this is why. Return in degrees.
     @staticmethod
-    @njit
+    @njit(fastmath=True)
     def vec_polar(pos):
         pos = pos[0:3]
         radius = np.sqrt(pos[0]**2 + pos[1]**2 + pos[2]**2)
@@ -474,9 +484,75 @@ class angular(object):
 
         return table
 
-uwao = np.array([1,2,3])
-uwu = angular()
-uwu.vec_polar(uwao)
+    # Gets the cylindrical, except as a static method powered by numba- much faster. Should have "[x,y,z,vx,vy,vz]"
+    # Returns all 6 parameters that Galpy is lusting for, albeit right-handed with the coordinate system of astropy
+    # Do np.pi - phi, to get the left-handed coordinates galpy wants!!! Returns are in RADIANS FOR PHI!!!
+    @staticmethod
+    @njit(fastmath=True)
+    def numba_cylindrical(array):
+        pos = array[0:2,:].T # x,y vectors
+        v_xy = array[3:5,:].T
+        R = np.sqrt(pos[:,0]**2 + pos[:,1]**2) # cylindrical radius
+        phis = np.arctan2(pos[:,1], pos[:,0])
+        vR, vT = np.empty_like(R), np.empty_like(R)
+        R_unit_vectors, phi_unit_vectors = np.empty_like(pos), np.empty_like(pos)
+        for num, phi in enumerate(phis):
+            R_unit_vectors[num,0:2] = pos[num]/R[num]
+            if phi < 0:
+                phi += 2*np.pi
+            phi_unit_vectors[num,0:2] = np.array([-1*np.sin(phi), np.cos(phi)])
+            vR[num], vT[num] = np.dot(R_unit_vectors[num], v_xy[num]), np.dot(phi_unit_vectors[num], v_xy[num])
+        return R, vR, vT, array[2], array[5], phis
+
+    # Get the left-handed cylindrical, from right-handed x y z vx vy vz. Basically, flip x/vx and we're done. I think.
+    # R, vR, vT, z, vz, phi
+    @staticmethod
+    @njit(fastmath=True)
+    def left_numba_cylindrical(array):
+        array[0,:], array[3,:] = array[0,:]*-1, array[3,:]*-1 # right-handed galactocentric cartesian x/vx are now negative
+        pos = array[0:2,:].T # x,y vectors
+        v_xy = array[3:5,:].T
+        R = np.sqrt(pos[:,0]**2 + pos[:,1]**2) # cylindrical radius
+        phis = np.arctan2(pos[:,1], pos[:,0])
+        vR, vT = np.empty_like(R), np.empty_like(R)
+        R_unit_vectors, phi_unit_vectors = np.empty_like(pos), np.empty_like(pos)
+        for num, phi in enumerate(phis):
+            R_unit_vectors[num,0:2] = pos[num]/R[num]
+            if phi < 0:
+                phi += 2*np.pi
+            phi_unit_vectors[num,0:2] = np.array([-1*np.sin(phi), np.cos(phi)])
+            vR[num], vT[num] = np.dot(R_unit_vectors[num], v_xy[num]), np.dot(phi_unit_vectors[num], v_xy[num])
+        return R, vR, vT, array[2], array[5], phis
+
+    # Get right-handed spherical polars from left-handed galpy coordinates. Takes input of above^
+    # r, thetas, phis = np.array(orbifitt.ang.right_numba_polar(R, z, phi)).T
+    # ^ how to get the correct output.
+    @staticmethod
+    @njit(fastmath=True)
+    def right_numba_polar(R, z, phi):
+        # First convert left-handed galpy to left-handed cartesian
+        x, y = R*np.cos(phi), R*np.sin(phi)
+        position_vectors = np.empty((len(R), 3))
+        position_vectors[:,0],position_vectors[:,1],position_vectors[:,2] = x,y,z
+        # Now, reverse x and vx
+        position_vectors[:,0] *= -1
+        # Now, you have right-handed cartesian. Use vec_polar to get polar r, theta, phi.
+        def vec_polar(pos):
+            pos = pos[0:3]
+            radius = np.sqrt(pos[0]**2 + pos[1]**2 + pos[2]**2)
+            theta = np.arccos(pos[2]/radius)
+            phi = np.arctan2(pos[1],pos[0])
+            if phi < 0:
+                phi += 2*np.pi
+            theta, phi = np.degrees(theta), np.degrees(phi)
+            polar_pos = np.array([radius, theta, phi])
+            return polar_pos
+        # Use vec_polar. Note that returns are in degrees. [r, theta, phi] in degrees.
+        position_vectors = [vec_polar(vec) for vec in position_vectors]
+        return position_vectors
+
+
+
 # Galactocentric Cartesian system rotations/etc.
 # x-convention. Recalculates angular momentum, too, in the new system.
 # Passive transformation: gives values in the new system, alongside the unit vectors of the new system (in the old.)
@@ -583,10 +659,9 @@ class monte_angular(object):
         table['dLx'],table['dLy'],table['dLz'] = dLx,dLy,dLz
         return table
     # Same as above, but returns Covariance Matrix.
-    # TODO: Four other parameters to implicate in covariance estimate: L LZ E CIRCULARITY
     def vec_covmonte(self, vec, n):
         # Get the angular momentum for this vector (judged as the "mean")
-        vec_galcent = self.converter.vec_GAL_to_GALCENT(*vec[0:6])
+        vec_galcent = self.converter.vec_GAL_to_GALCENT(*vec[0:6]) # x y z vx vy vz
         vec_L = angular().vec_momentum(vec_galcent)
 
         # Generate spread for vec (errors in parameter space)
@@ -625,13 +700,13 @@ class monte_angular(object):
             stdevs.append(dev_i)
 
         # Calculate Energy, L_magnitude, and Circularity (for 4D clustering) and their means
-        orbi = energistics.orbigistics()
+        from energistics import orbigistics
+        orbi = orbigistics()
         table = orbi.orbilarity(astrotable)
         E_mean = np.mean(table['E'])
         circ_mean = np.mean(table['circ'])
         L_mag = np.array([np.linalg.norm(d) for d in L])
         L_mean = np.linalg.norm(vec_L)
-
 
         # Generate Deviations
         L_mag_dev = L_mag - L_mean
@@ -662,7 +737,21 @@ class monte_angular(object):
             for j in range(4):
                 cov3[i,j] = np.mean(deviation_vector[i]*deviation_vector[j], axis=0)
 
-        return cov, stdevs, vec_L, cov2, stdevs2, vec_4d, cov3, vec_LE
+        # Generate deviations for x-devs
+        x,y,z = astrotable['x'],astrotable['y'],astrotable['z'] # list representation
+        xyz = np.array([x, y, z]).T # get vector representation
+        xyz = xyz - vec_galcent[0:3] # difference from mean, vector representation
+        xyz_dev = xyz.T # list representation
+
+        # Get a 6D Covariance/etc matrix, LX LY LZ X Y Z
+        cov6D = np.zeros(shape=(6, 6))
+        deviation_vector = [L_dev[0], L_dev[1], L_dev[2], xyz_dev[0], xyz_dev[1], xyz_dev[2]]
+        vec_6D = [vec_L[0], vec_L[1], vec_L[2], *vec_galcent[0:3]]
+        for i in range(6):
+            for j in range(6):
+                cov6D[i, j] = np.mean(deviation_vector[i] * deviation_vector[j], axis=0)
+
+        return cov, stdevs, vec_L, cov2, stdevs2, vec_4d, cov3, vec_LE, cov6D, vec_6D
     # Returns a pandas dataframe instead: useful to avoid write conflicts. Cleanup after.
     # Same monte as above, except with covariance matrices under ['covtrix'] too.
     def table_covmonte(self, table, n):
@@ -671,14 +760,16 @@ class monte_angular(object):
         covtrices, stdevslist, mean_angulars = [], [], [] # standard [lx ly lz] covtrices
         covtrices2, stdevslist2, mean_4ds = [], [], [] # sarah sofie lovdals [L Lz E circ]
         covtrices3, mean_4dLEs = [],[] # jorges request [lx ly lz E]
+        covtrices6D, mean_vecs6D = [],[]
         for row in table:
             l, b, dist, dmul, dmub, vlos = row['l'], row['b'], row['dist'], row['dmu_l'], row['dmu_b'], row['vlos']
             edist, edmul, edmub, evlos = row['edist'], row['edmu_l'], row['edmu_b'], row['evlost']
             vec = [l, b, dist, dmul, dmub, vlos, edist, edmul, edmub, evlos]
-            covtrix, stdevs, vec_L, covtrix2, stdevs2, vec_4d, covtrix3, vec_LE = self.vec_covmonte(vec, n)
+            covtrix, stdevs, vec_L, covtrix2, stdevs2, vec_4d, covtrix3, vec_LE, cov6D, vec_6D = self.vec_covmonte(vec, n)
             covtrices.append(covtrix), stdevslist.append(stdevs), mean_angulars.append(vec_L)
             covtrices2.append(covtrix2), stdevslist2.append(stdevs2), mean_4ds.append(vec_4d)
             covtrices3.append(covtrix3), mean_4dLEs.append(vec_LE)
+            covtrices6D.append(cov6D), mean_vecs6D.append(vec_6D)
 
         df = table.to_pandas()
 
@@ -693,6 +784,9 @@ class monte_angular(object):
         df['dL'], df['dLz'], df['dE'], df['dcirc'] = np.array(stdevslist2).T # in order
         df['covtrix3'] = covtrices3 # covariance matrices for [lx ly lz E] format jorge wanted
         df['vec_4dLE'] = mean_4dLEs # list of vectors for the above covariance matrices
+
+        df['covtrix6D'] = covtrices6D  # Lx Ly Lz x y z 6D Covariance Matrices
+        df['vec_6D'] = mean_vecs6D # the mean value for the stars
 
         return df
     # Given table with n rows, will generate m multivariate-normal distributed momentum vectors for each row in table.
@@ -731,9 +825,19 @@ class monte_angular(object):
             list_of_rows_3.append(list(L_generated))
         list_of_columns_3 = list(map(list, zip(*list_of_rows_3)))
 
+        # Create example datasets with LxLyLzXYZ
+        covtrices4 = panda['covtrix6D']
+        LX_vectors = panda['vec_6D']
+        list_of_rows_4 = []
+        # Generate L components for each row.
+        for num, L_vector, covtrix in zip(range(len(covtrices4)), LX_vectors, covtrices4):
+            L_generated = random.default_rng().multivariate_normal(mean=L_vector, cov=covtrix, size=m)
+            list_of_rows_4.append(list(L_generated))
+        list_of_columns_4 = list(map(list, zip(*list_of_rows_4)))
 
 
-        return list_of_columns, list_of_columns_2, list_of_columns_3
+
+        return list_of_columns, list_of_columns_2, list_of_columns_3, list_of_columns_4
 
 # Great Circle Cell Counts in the Galactocentric System, as defined by 1996 Johnston Paper.
 # Note: Designed to work in Standard Polar, not Latipolar. ALL IN DEGREES!
@@ -973,18 +1077,12 @@ class greatcount(object):
         thetas, phis, indices = np.array(acceptphetaphiindices).T
         return thetas, phis, indices
 
-# Class for fitting greatcounts to a clustering. TODO: Always pass Numpy Arrays instead of lists, unless specified.
-@jitclass
-class greatfit(object):
-    def __init__(self):
-        none = None
-
     # Unlike the above, the new table retains original data, but has a new column ("greatcount") with TRUE or FALSE
     # TODO: TRUE is inside the circle, FALSE is not. This is to permit correct cluster comparisons down the line.
     # "radmin" has been removed, given we already clean the data in ascii_helioport.
     def gcc_table_retain(self, table, theta, phi, dtheta):
         # Set up unit vector for GCC
-        theta, phi, dtheta = math.radians(theta), math.radians(phi), math.radians(dtheta)
+        theta, phi, dtheta = np.radians(theta), np.radians(phi), np.radians(dtheta)
         polar_unit = np.array([np.sin(theta) * np.cos(phi), np.sin(theta) * np.sin(phi), np.cos(theta)])
         # Get unit vectors for all the targets
         pos = np.array([table['x'], table['y'], table['z']]).T
@@ -1001,10 +1099,55 @@ class greatfit(object):
         table['greatcount'] = truefalse
         return table
 
-    # Generate a set of theta, phi (in galcentricpolar) for a given GCC for scatterplot. Now with Numba.
+    # Numba-fied version of gcc_table_retain, specifically built for [lx ly lz x y z] vector arrays.
+    # Takes vector array [v1 v2 v3] where v1 = [x1 y1 z1]. Theta and phi and dtheta are in degrees.
+    # Returns both a True/False array of the original cardinality, and a "trues" array with indices accepted
+    @staticmethod
+    @njit(fastmath=True)
+    def gcc_array_retain(array, theta, phi, dtheta):
+        # Set up unit vector for GCC
+        theta, phi, dtheta = np.radians(theta), np.radians(phi), np.radians(dtheta)
+        polar_unit = np.array([np.sin(theta) * np.cos(phi), np.sin(theta) * np.sin(phi), np.cos(theta)])
+        # Get unit vectors for all the targets
+        radii = np.sqrt(array[:,0]**2 + array[:,1]**2 + array[:,2]**2)
+        pos_unit = np.empty_like(array)
+        pos_unit[:,0], pos_unit[:,1], pos_unit[:,2] = array[:,0]/radii, array[:,1]/radii, array[:,2]/radii
+        # Dot them with matmul # [pol1, pol2, pol3]*[data array] with standard matrix multiplication
+        dotted = np.dot(pos_unit, polar_unit)
+        condition = np.sin(dtheta)
+        # Check for conditions
+        truefalse = np.empty(len(radii), dtype=types.boolean)
+        trues = []
+        for num, item in enumerate(dotted):
+            if abs(item) <= condition:
+                truefalse[num] = True
+                trues.append(num)
+            else:
+                truefalse[num] = (False)
+        return truefalse, np.array(trues)
+
+# Class for fitting greatcounts to a clustering. Always pass Numpy Arrays instead of lists, unless specified.
+@jitclass()
+class greatfit(object):
+    def __init__(self):
+        none = None
+
+    def vec_polar(self, pos):
+        pos = pos[0:3]
+        radius = np.sqrt(pos[0] ** 2 + pos[1] ** 2 + pos[2] ** 2)
+        theta = np.arccos(pos[2] / radius)
+        phi = np.arctan2(pos[1], pos[0])
+        if phi < 0:
+            phi += 2 * np.pi
+        polar_pos = np.array([radius, theta, phi])
+        return polar_pos
+
+    # Generate a set of theta, phi (in galcentricpolar) for a given GCC. Theta,phi must be in degrees. Output in degs.
     def gcc_gen(self, n_points, theta, phi):
-        # Generate coordinate system for the great circle for coordinate decomposition
+        # Convert
         theta, phi = np.radians(theta), np.radians(phi)
+
+        # Generate coordinate system for the great circle for coordinate decomposition
         polar_z = np.array([np.sin(theta) * np.cos(phi),
                             np.sin(theta) * np.sin(phi),
                             np.cos(theta)])
@@ -1026,63 +1169,73 @@ class greatfit(object):
         for num, d in enumerate(phirange):
             gcc_univects[num] = polar_x*np.cos(d) + polar_y*np.sin(d)
 
-        # Specify locally, since we can't draw from separate classes inside a static method with njit.
-        def vec_polar(pos):
-            pos = pos[0:3]
-            radius = np.sqrt(pos[0] ** 2 + pos[1] ** 2 + pos[2] ** 2)
-            theta = np.arccos(pos[2] / radius)
-            phi = np.arctan2(pos[1], pos[0])
-            if phi < 0:
-                phi += 2 * np.pi
-            theta, phi = np.degrees(theta), np.degrees(phi)
-            polar_pos = np.array([radius, theta, phi])
-            return polar_pos
-
         # Create an empty to populate
         polars = np.empty((len(gcc_univects), 3), dtype=types.float64)
 
         # Get theta and phi for gcc_univects in the non-GCC frame
         for num, univect in enumerate(gcc_univects):
-            polars[num] = vec_polar(univect)
+            polars[num] = self.vec_polar(univect)
         polars = polars.T
 
         thetas, phis = polars[1],polars[2]
 
-        return thetas, phis
+        return np.degrees(thetas), np.degrees(phis)
 
     # Given a set of points in galcentricpolar on the unit sphere, get the least-squares distance to the theta/phi.
-    def least_squares(self, theta_data, phi_data, theta_pole, phi_pole, resolution):
-        # Generate the unit vectors for the data
-        dx, dy, dz = np.cos(phi_data)*np.sin(theta_data),np.sin(phi_data)*np.sin(theta_data),np.cos(theta_data)
-        data_vects = np.empty((len(dx), 3), dtype=types.float64)
-        data_vects[:,0] = dx
-        data_vects[:,1] = dy
-        data_vects[:,2] = dz
+    # The data input should be in degrees.
+    def least_squares(self, theta_data, phi_data, theta_pole, phi_pole, resolution, real_distance):
+        # Input in degrees hence convert to radians.
+        theta_data, phi_data = np.radians(theta_data), np.radians(phi_data)
 
-        # Generate GCC Data
-        gcc_thetas, gcc_phis = self.gcc_gen(resolution, theta_pole, phi_pole)
+        # Maximize the number of points within distance "real_distance" (in degrees) of the line. (small angle approx)
+        if real_distance != True:
+            # Real distance in radians, but squared.
+            raddistsquare = np.radians(real_distance)**2
 
-        # Unit vectors for GCC Data
-        gx, gy, gz  = np.cos(gcc_phis)*np.sin(gcc_thetas), np.sin(gcc_phis)*np.sin(gcc_thetas), np.cos(gcc_thetas)
-        gcc_vectrs = np.empty((len(gx), 3), dtype=types.float64)
-        gcc_vectrs[:, 0] = gx
-        gcc_vectrs[:, 1] = gy
-        gcc_vectrs[:, 2] = gz
+            # Generate GCC Data (gcc_gen output in degrees hence convert to radians.)
+            gcc_thetas, gcc_phis = self.gcc_gen(resolution, theta_pole, phi_pole)
+            gcc_thetas, gcc_phis = np.radians(gcc_thetas), np.radians(gcc_phis)
 
-        # For each point in the data, find the minimum point in the GCC, get the distance, and sum
-        squaresum = 0
-        for point in data_vects:
-            distances = point - gcc_vectrs
-            distances = distances[0]**2 + distances[1]**2 + distances[2]**2
-            squaresum += np.min(distances)
+            # For each point in the data, assuage whether it's within the degdist of the data, and if it is, add 1.
+            squaresum = 0
+            for theta, phi in zip(theta_data, phi_data):
+                theta_dif = theta - gcc_thetas
+                phi_dif = phi - gcc_phis
+                distsquare = theta_dif**2 + (phi_dif*np.sin(theta))**2
+                if np.min(distsquare) <= raddistsquare:
+                    squaresum += 1
+            return squaresum
+
+        # If real_distance is True, then generate vectors for the data instead.
+        else:
+            # Generate the unit vectors for the data
+            dx, dy, dz = np.cos(phi_data)*np.sin(theta_data),np.sin(phi_data)*np.sin(theta_data),np.cos(theta_data)
+            data_vects = np.empty((len(dx), 3), dtype=types.float64)
+            data_vects[:,0] = dx
+            data_vects[:,1] = dy
+            data_vects[:,2] = dz
+
+            # Generate GCC Data (gcc_gen output in degrees hence convert to radians.)
+            gcc_thetas, gcc_phis = self.gcc_gen(resolution, theta_pole, phi_pole)
+            gcc_thetas, gcc_phis = np.radians(gcc_thetas), np.radians(gcc_phis)
+
+            # Unit vectors for GCC Data
+            gx, gy, gz  = np.cos(gcc_phis)*np.sin(gcc_thetas), np.sin(gcc_phis)*np.sin(gcc_thetas), np.cos(gcc_thetas)
+            gcc_vectrs = np.empty((len(gx), 3), dtype=types.float64)
+            gcc_vectrs[:, 0] = gx
+            gcc_vectrs[:, 1] = gy
+            gcc_vectrs[:, 2] = gz
+
+            # For each point in the data, find the minimum point in the GCC, get the distance, and sum
+            squaresum = 0
+            for point in data_vects:
+                distances = point - gcc_vectrs
+                distances = distances[0]**2 + distances[1]**2 + distances[2]**2
+                squaresum += np.min(distances)
+
+            return squaresum
 
 
-        return squaresum
-
-
-
-owo = greatfit()
-owo.least_squares(np.array([0,1]), np.array([0,1]), 0.5, 0.5, 1000)
 
 # Carry out a clustering (HDBSCAN-oriented).
 # Needs array [L1,L2,L3...]
@@ -1097,29 +1250,27 @@ class cluster3d(object):
     """
     This assumes r has already been cleaned: see r_clean
     Note that this will check each axis (x,y,z) for the sig_tolerance requirement
-    If even one of them do not satisfy it, it removes that value from table ("strong" requirement.) 
+    If the ratio of "L" to "dL" is lower than a sig_tolerance, i.e. L = 3 Sigma or Higher, remove the element. 
     """
     def L_clean(self, table, sig_tolerance):
         # Grab momenta magnitudes (i.e. absolute values.)
         Ls = np.abs(np.array([(table['Lx']),(table['Ly']),(table['Lz'])]).T) # as an array [[lx ly lz], [l2]...]
         # Grab errors
-        dLs = np.array([table['dLx'],table['dLy'],table['dLz']]).T # same format as above.
-        # Grab differences (absolute)
-        difs = np.abs(Ls - dLs)
+        dLs = np.abs(np.array([table['dLx'],table['dLy'],table['dLz']]).T) # same format as above.
         # Ratio them
-        difratios = difs / dLs
+        ratio_Ls_to_dLs = Ls/dLs
         # If a dataframe, use table.drop (pandas)
         if type(table) == pandas.DataFrame:
             for num,row in enumerate(table):
-                for i in difratios[num]:
-                    if i >= sig_tolerance:
+                for i in ratio_Ls_to_dLs[num]:
+                    if i <= sig_tolerance:
                         table.drop(num)
                         break
         # Else use table.remove_row (astropy)
         else:
             for num,row in enumerate(table):
-                for i in difratios[num]:
-                    if i >= sig_tolerance:
+                for i in ratio_Ls_to_dLs[num]:
+                    if i <= sig_tolerance:
                         table.remove_row(num)
                         break
         return table
@@ -1130,7 +1281,6 @@ class cluster3d(object):
         for num, row in enumerate(table):
             if row['r'] <= minimum_radius:
                 table.remove_row(num)
-
         return table
 
     # Return probabilistic selection for bounding box as True or False (a generator object.) Replaces clean.
@@ -1282,8 +1432,11 @@ class compclust(object):
 
     # Get number of clusts (including outlier clustering, -1)
     # This assumes that clusters are linearly ordered [-1,0,1,2,3,4...]
-    def nclust_get(self, clust):
-        return np.max(clust) + 2
+    def nclust_get(self, clust, with_outlier=False):
+        if with_outlier == False:
+            return np.max(clust) + 2
+        else:
+            return np.max(clust) + 1
 
     # More complete nclust_get, albeit slower.
     def nclust_get_complete(self, clust):
@@ -1318,6 +1471,7 @@ class compclust(object):
         for num, array in enumerate(arrays):
             with open(array, 'rb') as f:
                 arrays[num] = pickle.load(f)
+
         # Get the num
         arrays = [self.nclust_get(d) for d in arrays]
         # Pass this to graphutils plotting to generate a plot
@@ -1325,7 +1479,7 @@ class compclust(object):
 
     # The final rendition of compclust.
     """
-    Compute cluster match via hungarian method
+    Compute cluster match via hungarian method (clust1 is reference, clust2 is the one we want to remap) 
     If the 2nd clustering has say 9 clusterings while the first has 8, take the "least quality" match and relabel
     The new label will be subject to an index limit (i.e. a "minimum value" to avoid mixing labels from multiple.) 
     """
@@ -1407,6 +1561,8 @@ class compclust(object):
         return newclust
 
     # Given a stack of clusterings, [c1 c2 ... cN], compute percentage memberships. Assume clusterings as lists.
+    # Key Weakness: assumes clusterings go from -1 to "maximum_cluster" continuously.
+    # Will not work if not [-1, 0, 1...23] for example if [0, 5, 7]. Just as example.
     """
     Load in clusterings
     Find out percentage times that each star ends up in a given cluster
@@ -1453,7 +1609,6 @@ class compclust(object):
             max_fracs.append(max_frac)
         # Astropy it up
         cluster_labels = [str(d) for d in np.arange(-1, maximum_cluster + 1, 1)]
-        print(percent_array)
         table = Table(data=percent_array, names=cluster_labels)
         # probable_clust gives the most probabilistic cluster designation, probability is the probability of it
         table['probable_clust'], table['probability'] = max_clusts, max_fracs
@@ -1519,3 +1674,71 @@ class compclust(object):
                 if clust_id == thisPair[1]:
                     newclust[num] = thisPair[0]
         return newclust
+
+    # Take a list of percenttables, list of clusters, and combine to a "master table"
+    """
+    Use the zeroth table as a "base" for membership
+    For example, use the mean percent table without great circles
+    Great circles exist to increase the ratio of "cluster stars" to "noise/other cluster" stars... *hopefully* 
+    Consequently expect great circles to increase amount of cluster stars found 
+    Figure out a way to justify this (compare memberships with/without circles to original table, etc.)
+    For each percenttable, compare to base for the given selected cluster of that table
+    If the row probability in new table exceeds base table for elements of that particular cluster, replace with this new probability/cluster
+    """
+    def percenttable_stack(self, percent_reference, percents_to_use, clusters_to_use):
+
+        # Grab reference probable_clust and probability
+        probable_clusts, probabilities = copy.deepcopy(percent_reference['probable_clust']), \
+                                         copy.deepcopy(percent_reference['probability'])
+
+        # Grab for the tables, also, in list form (nested lists.)
+        possible_clusts = [percent_to_use['probable_clust'] for percent_to_use in percents_to_use]
+        possible_probabilities = [percent_to_use['probability'] for percent_to_use in percents_to_use]
+
+        # Go through the reference table data row-by-row
+        for i in range(len(probable_clusts)):
+
+            # Go through the percents_to_use/clusters_to_use
+            for num, cluster_to_use in enumerate(clusters_to_use):
+
+                # Verify that in the greatcircle, we're dealing with the cluster of interest for this row
+                if possible_clusts[num][i] == cluster_to_use:
+
+                    # It is indeed the one we greatcircled for in this greatcircle.
+                    # Now, verify if the greatcircle had a greater probability than the default. If it did, then replace.
+                    if possible_probabilities[num][i] > probabilities[i]:
+
+                        # It is. Replace in probable_clusts!
+                        probable_clusts[i] = cluster_to_use
+                        probabilities[i] = possible_probabilities[num][i]
+
+        """
+        This method will cycle through all the greatcircled membership tables/etc
+        It will select the most probable clustering, in light of the greatcircling
+        Not statistically rigorous, but will allow greatcircles to be exemplified in use.
+        """
+
+        # Add the greatcircle probabilities/etc to the table.
+        percent_reference['greatcircle_probable_clust'], \
+        percent_reference['greatcircle_probability'] = probable_clusts, \
+                                                       probabilities
+
+        # Now, we need to re-calculate the total membership probabilities for the clusters of interest as data fraction
+        present_clusters = []
+        for clust in probable_clusts:
+            if clust not in present_clusters:
+                present_clusters.append(clust)
+
+        # Set up table.
+        fraction = np.zeros(len(present_clusters))
+        table = Table(names=["cluster","membership_fraction"], data=[present_clusters, fraction])
+
+        # Go through rows and add to table
+        for clust in probable_clusts:
+            table[present_clusters.index(clust)]['membership_fraction'] += 1
+
+        # Divide the membership_fraction by the number of stars
+        table['membership_fraction'] /= len(probable_clusts)
+
+        # Return table
+        return percent_reference, table

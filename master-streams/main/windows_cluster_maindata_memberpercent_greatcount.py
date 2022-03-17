@@ -11,9 +11,17 @@ from energistics import energistics, energistics_manual, orbigistics
 from galcentricutils import greatcount
 import matplotlib.pyplot as plt
 
-# Load the non-montecarlo-memberpercented clustering
-with open(windows_directories.clusterdir + "\\" + "fullgroup.cluster.txt", 'rb') as f:
-    clustered = pickle.load(file=f)
+# Load the post-initial-montecarlo-clustering (via memberpercent.py.)
+"""
+This has the benefit of having weeded-out most of the "non-clusterings" via monte-carlo-
+most of them will have vanished by this point and been absorbed into other clusters, if they're not the "significant one."
+"""
+writer = hdfutils.hdf5_writer(windows_directories.datadir, ascii_info.asciiname)
+percent_table = writer.read_table(ascii_info.fullgroup, "percent_table")
+clustered = percent_table['probable_clust']
+
+#with open(windows_directories.clusterdir + "\\" + "fullgroup.cluster.txt", 'rb') as f:
+#    clustered = pickle.load(file=f)
 
 # Get the unique clusters in this
 clusters_to_try = []
@@ -28,8 +36,8 @@ table = hdfutils.hdf5_writer(windows_directories.datadir,
 table = galcentricutils.angular().get_polar(table)
 
 # Generate the grid of great circles to try for the "first pass"
-grid_edge_length = 200 # number of GCC poles to generate
-resolution = 400 # number of datapoints to generate in GCC
+grid_edge_length = 400 # number of GCC poles to generate
+resolution = 800 # number of datapoints to generate in GCC
 pole_thetas, pole_phis, pole_indices = greatcount().fullgridgen(np.rint(grid_edge_length**2, casting='unsafe'))
 pole_thetas, pole_phis = np.degrees(pole_thetas), np.degrees(pole_phis)
 
@@ -44,6 +52,7 @@ real_dist = 5
 
 # Poles Found
 poles_found = []
+
 
 # For each individual clustering we have, try to fit greatcircles and produce plots
 for clust in clusters_to_try:
@@ -98,15 +107,15 @@ for clust in clusters_to_try:
 
     # Go forth and plot the greatcircle against the data, in ra/dec.
     graphutils.spec_graph().clust_thetaphi(table=table_included, clustering=clustered[included], cluster_id=which_try,
-                                           vasiliev=False, savedexdir="greatcount_beforeMC_" + str(clust) + "_thetaphi_greatcircle",
+                                           vasiliev=False, savedexdir="greatcount_" + str(clust) + "_thetaphi_greatcircle",
                                            gcc_thetaphis=greatfit.gcc_gen(1000, *best_circle))
 
-# Save the best_circles to a table (non-memberpercent).
+# Save the best_circles to a table.
 writer = hdfutils.hdf5_writer(windows_directories.datadir, ascii_info.asciiname)
 table = Table()
 table['clust_to_try'] = clusters_to_try
 thetapoles, phipoles = np.array(poles_found).T
 table['theta'] = thetapoles
 table['phi'] = phipoles
-writer.write_table("greatcircles_nonmemberpercent_preliminary", "greatcircles", table)
+writer.write_table("greatcircles_preliminary", "greatcircles", table)
 

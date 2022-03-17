@@ -1,13 +1,16 @@
 import os
 import time
 import matplotlib.ticker as pltick
+from matplotlib import rc
 from matplotlib.ticker import MaxNLocator
 from numpy import random
 import galcentricutils, hdfutils, windows_directories, ascii_info
 import numpy as np
 import matplotlib.pyplot as plt
 import multiprocessing
-plt.rcParams["font.family"] = "serif"
+plt.rcParams['animation.ffmpeg_path'] = 'C:\\Users\\Callicious\\Documents\\Prog\\pycharm\\venv\\ffmpeg\\bin\\ffmpeg.exe'
+rc('font', **{'family': 'serif', 'serif': ['Computer Modern']})
+rc('text', usetex=True)
 from matplotlib.patches import Patch
 """ 
 Monte-carlo Convergence Test
@@ -44,6 +47,7 @@ Overplot fractional difference in mu/var for the table (i.e. combine row tables 
 See which (n) provides the best fractional convergence/within tolerance. 
 """
 # Does the above for one table. Domain of n is split in 2: lower half gets n_step, upper gets 2*n_step.
+# avg_length defines the number of final elements to average over to define the "good estimate"
 def monte_converge(table, table_name, n_max, n_step, avg_length):
     # Set up the table/environment for plotting, alongside axis limits.
     """
@@ -129,7 +133,7 @@ def monte_converge(table, table_name, n_max, n_step, avg_length):
             axs[i,j].set(ylim=ylims)
             axs[i,j].text(s=texts[j][i], x=0.9, y=0.15, va="top", ha="left", transform=axs[i,j].transAxes, wrap=True)
 
-    fig.suptitle(("Monte Carlo Fractional Error for " + r'$\mu_{L_i}$' + " & " + r'$\sigma_{L_i}$' + ("\n{0} data,").format(table_name)) + (" for {} ").format(len(table)) + "randomly sampled row elements")
+    fig.suptitle(("Monte Carlo Fractional Error for " + r'$\mu_{L_i}$' + " \& " + r'$\sigma_{L_i}$' + ("\n{0} data,").format(table_name.replace("_", "\_"))) + (" for {} ").format(len(table)) + "randomly sampled row elements")
     fig.subplots_adjust(top=0.875)
     plt.subplots_adjust(wspace=0, hspace=0)
 
@@ -151,12 +155,10 @@ def monte_converge(table, table_name, n_max, n_step, avg_length):
 
 # Run a convergence test to see how many steps are roughly needed for the monte-carlo estimate to converge to a final.
 def converge_test():
-    test_rows = get_n(get_L(),20)
+    test_rows = get_n(get_L(),40)
     names = ascii_info.all_groups
     for num, group_rows in enumerate(test_rows):
-        test_monte = monte_converge(group_rows, names[num], 500, 10, 10)
+        test_monte = monte_converge(group_rows, names[num], 1000, 20, 10)
 
-
-
-
-
+# Run the convergence test
+converge_test()

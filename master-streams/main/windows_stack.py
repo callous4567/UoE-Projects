@@ -47,13 +47,15 @@ class dataframes_to_tables():
         # Some housework: convert to Astropy Table, and overwrite the astropy source.
         for group, astropyset, pandaset in zip(groups, astropysets, pandasets):
             df = writer.read_df(group, pandaset)
-            # Drop the various arrays we want to keep inside the dataframe
+            # Drop the various arrays we want to keep inside the dataframe but that astropy won't tolerate
             df = df.drop(columns="covtrix")
             df = df.drop(columns="vec_L")
             df = df.drop(columns="covtrix2")
             df = df.drop(columns="vec_4d")
             df = df.drop(columns="covtrix3")
             df = df.drop(columns="vec_4dLE")
+            df = df.drop(columns="covtrix6D")
+            df = df.drop(columns="vec_6D")
             table = Table.from_pandas(df)
             writer.write_table(group, astropyset, table)
 

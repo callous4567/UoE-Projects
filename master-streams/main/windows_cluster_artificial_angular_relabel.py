@@ -13,8 +13,6 @@ saveids = ascii_info.duplimonte_saveids
 with open(windows_directories.clusterdir + "\\" + "fullgroup.cluster.txt", 'rb') as f:
     mean_cluster = pickle.load(f)
 
-
-
 # Get the current "minimum_excess_index" for unique labelling of the cluster excess
 current_excess_value = np.max(mean_cluster) + 1
 

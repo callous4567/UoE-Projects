@@ -25,8 +25,8 @@ groups = ascii_info.all_groups
 astropysets = [ascii_info.set_raw for group in groups]
 pandasets = [ascii_info.panda_raw for group in groups]
 zipped = list(zip(groups, astropysets, pandasets))
-# Number of individual datapoints to monte over.
-windows_multiprocessing.n_monte = 200
+# Number of datapoints to generate errors over (higher=slower.) Final run has 500.
+windows_multiprocessing.n_monte = 1000
 windows_multiprocessing.sourcecoord = "solar_info.dat"
 results = ["null"]
 # Regularly map/pool :)

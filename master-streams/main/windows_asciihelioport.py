@@ -1,12 +1,7 @@
 import numpy as np
-from astropy.coordinates import Galactocentric
-
-import ascii_info
 import asciiutils
 import os
-
 import galcentricutils
-import windows_directories
 import windows_stack
 from windows_directories import datadir, asciidir, sourcedir
 from ascii_info import asciiname, fullgroup, fullset, set_raw
@@ -42,7 +37,7 @@ stringnames = [d.replace(".txt","") for d in ascii_list]
 # Get ascii tables and save them (individually for debug)
 for n,d in enumerate(asciis):
     d.astrotabify()
-    d.table['dmu_l'] = d.table['dmu_l']/np.cos(np.deg2rad(d.table['b']))
+    d.table['dmu_l'] = d.table['dmu_l']/np.cos(np.radians(d.table['b'])) # because they were stored multiplied by cosdec
 
     # Set up handler for conversion (using our coordinates)
     galcent = galcentricutils.galconversion()
@@ -58,8 +53,9 @@ for n,d in enumerate(asciis):
     # Also get the Galcentric Polars
     d.table = galcentricutils.angular().get_polar(d.table)
 
-    # Remove stars within a certain radius (set to 20 kpc in this case.)
-    d.table = galcentricutils.cluster3d().r_clean(d.table, minimum_radius=20)
+    # Remove stars within a certain radius. Originally used 20. Try with 15 next.
+    minradius = 15
+    d.table = galcentricutils.cluster3d().r_clean(d.table, minimum_radius=minradius)
 
     # Save Tables
     print(datadir, asciiname, stringnames[n], set_raw)

@@ -10,6 +10,8 @@ class dirbuilder(object):
         self.duplimonte()
         self.duplimonte_kmeanshtmldir()
         self.clustdir()
+        self.orbidir()
+        self.orbidebugdir()
 
     # Build directory for building image/data directories
     def datimgdir(self):
@@ -41,6 +43,14 @@ class dirbuilder(object):
 
     # Build directories for clustering all the duplimonte (saving the images.)
     def duplimonte_kmeanshtmldir(self):
+        try:
+            os.mkdir(imgdir + "\\kmeans_html")
+        except:
+            pass
+        try:
+            os.mkdir(imgdir + "\\xmeans_html")
+        except:
+            pass
         for group in ascii_info.all_groups:
             try:
                 try:
@@ -66,5 +76,28 @@ class dirbuilder(object):
             os.mkdir(imgdir + "\\clustered")
         except:
             pass
+
+    # Build orbits dir and etc
+    def orbidir(self):
+        try:
+            os.mkdir(windows_directories.orbitsdir)
+        except:
+            pass
+        try:
+            os.mkdir(windows_directories.imgdir + "\\orbit_fitting_variables")
+        except:
+            pass
+        try:
+            os.mkdir(windows_directories.orbitsfitdir)
+        except:
+            pass
+
+    # Build debug dir/orbitdir
+    def orbidebugdir(self):
+        try:
+            os.mkdir(windows_directories.imgdir + "\\cluster_greatcount_debug")
+        except:
+            pass
+
 
 dirbuilder()

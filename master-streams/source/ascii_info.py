@@ -34,19 +34,29 @@ add .cluster.txt for cluster list
 add .txt for pure [l1,l2,l3] vector list 
 """
 
-duplimonte_number = 200
+duplimonte_number = 1000
 duplimonte_saveids = [("L_{}").format(d) for d in [str(d) for d in range(duplimonte_number)]]
 duplimonte_L4D_saveids = [("L4D_{}").format(d) for d in [str(d) for d in range(duplimonte_number)]]
 duplimonte_LE_saveids = [("LE_{}").format(d) for d in [str(d) for d in range(duplimonte_number)]]
+duplimonte_LXYZ_saveids = [("LXYZ_{}").format(d) for d in [str(d) for d in range(duplimonte_number)]]
 
 # Set minpars for each group for cluster_duplimonte. minpar is SIZE,SAMPLES.
 bhb_minpar = [9,7]
 gcs_minpar = [5,5]
 kgiant_minpar = [8,12]
 lamostk_minpar = [8,12]
-fulldata_minpar = [15,15]
+fulldata_oldminpar = [15,15]
+fulldata_minpar = [8, 10] # 10,10 is our final borderline acceptance (which works with our data cleaning.). 15,15 is the original. [15,15]
 fulldata_minpar_L4D = fulldata_minpar
 fulldata_minpar_LE = fulldata_minpar
 minpars_allgroups = [bhb_minpar, gcs_minpar, kgiant_minpar, lamostk_minpar]
 
-
+# Selected clusterings
+#clusters_to_cluster = [1,5,4,2,11,6] # manually specify (this will be called in manually.) # moved to asciiinfo
+#gcc_widths = [12.5, 15, 15, 25, 35, 20] # manually specify by-eye. TODO: Automate.
+clusters_to_cluster = [6, 11, 2, 8, 13, 9, 3, 1, 12, 4, 5, 0, 10]
+gcc_widths = [30, 15, 20, 25, 40, 20, 30, 15, 20, 20, 30, 25, 30]
+clusters_to_orbifit = [1, 3, 5, 6, 8, 13]
+# The save-ids for all the generated orbit fits
+n_carlo = 200
+orbifit_saveids = [("orbifit_instance_{0:.0f}").format(d) for d in range(n_carlo)]

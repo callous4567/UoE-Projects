@@ -1,8 +1,8 @@
 import time
-
 import numpy as np
 import scipy
 from astropy.table import vstack, Table
+from matplotlib import pyplot as plt
 from numpy import argmin
 import pickle
 import ascii_info
@@ -51,7 +51,8 @@ def do_covmonte_table(groupsetsaveset):
     # Run Monte on table
     df = monte.table_covmonte(table,n_monte)
     # Do a quick clean on the table to remove dirty L values whose ratio to sigma exceeds n, here n=3.
-    df = galcentricutils.cluster3d().L_clean(df, 3)
+    # TODO: Use or not? Try without.
+    # df = galcentricutils.cluster3d().L_clean(df, 3)
     # Save the table: watch out for if file is already being written to (retry if it fails.)
     while True:
         try:
@@ -75,11 +76,12 @@ def do_duplimonte_table(groupsetm):
     group, set, m = groupsetm
     writer = hdfutils.hdf5_writer(windows_directories.datadir, ascii_info.asciiname)
     df = writer.read_df(group, set)
-    list_of_columns, list_of_columns_2, list_of_columns_3 = galcentricutils.monte_angular().panda_duplimonte(df, m)
+    list_of_columns, list_of_columns_2, list_of_columns_3, list_of_columns_4 = galcentricutils.monte_angular().panda_duplimonte(df, m)
     # Generate sets for list_of_tables
-    indices, indices_2, indices_3 = [("L_{}.txt").format(d) for d in [str(d) for d in range(m)]], \
-                                    [("L4D_{}.txt").format(d) for d in [str(d) for d in range(m)]], \
-                                    [("LE_{}.txt").format(d) for d in [str(d) for d in range(m)]]
+    indices, indices_2, indices_3, indices_4 = [("L_{}.txt").format(d) for d in [str(d) for d in range(m)]], \
+                                               [("L4D_{}.txt").format(d) for d in [str(d) for d in range(m)]], \
+                                               [("LE_{}.txt").format(d) for d in [str(d) for d in range(m)]], \
+                                               [("LXYZ_{}.txt").format(d) for d in [str(d) for d in range(m)]]
     # Pickle and dump all the tables to file for LxLyLz
     for column, savedex in zip(list_of_columns, indices):
         with open(windows_directories.duplimontedir + "\\" + group + "\\" + savedex, 'wb') as f:
@@ -90,6 +92,10 @@ def do_duplimonte_table(groupsetm):
             pickle.dump(column, f)
     # Pickle and dump all the tables to file for LxLyLzE
     for column, savedex in zip(list_of_columns_3, indices_3):
+        with open(windows_directories.duplimontedir + "\\" + group + "\\" + savedex, 'wb') as f:
+            pickle.dump(column, f)
+    # Pickle and dump all the tables to file for LxLyLzXYZ
+    for column, savedex in zip(list_of_columns_4, indices_4):
         with open(windows_directories.duplimontedir + "\\" + group + "\\" + savedex, 'wb') as f:
             pickle.dump(column, f)
 
@@ -181,6 +187,7 @@ def do_gccsplit_confidence(vararray):
 # Arrayinfo should be [group, saveid] for the duplimonte: minpar as in cluster3d()
 # Should be given a list of angular momenta [[lx1,ly1,lz1],[lx2...]...]
 def do_hdbscan(arrayinfominpar):
+    # Do the clustering
     arrayinfo, minpar = arrayinfominpar
     with open(windows_directories.duplimontedir + "\\" + arrayinfo[0] + "\\" + arrayinfo[1] + ".txt", 'rb') as f:
         data = pickle.load(f)
@@ -211,8 +218,8 @@ def do_hdbscan_L4D(arrayinfominpar):
     with open(windows_directories.duplimontedir + "\\" + arrayinfo[0] + "\\" + arrayinfo[1] + ".cluster.txt", 'wb') as f:
         pickle.dump(obj=clustered, file=f)
     # Generate a HTML for this clustering under imgdir\\ + "kmeans_html\\duplimonte_kmeanshtml\\" + group_saveid.html
-    #savedexdir = "kmeans_html\\duplimonte_kmeanshtml\\" + arrayinfo[0] + "\\" + arrayinfo[1] + "_WITH_SOFIELOVDAL"
-    #graphutils.threed_graph().kmeans_L_array(data, clustered, savedexdir, False, False)
+    savedexdir = "kmeans_html\\duplimonte_kmeanshtml\\" + arrayinfo[0] + "\\" + arrayinfo[1] + "_WITH_SOFIELOVDAL"
+    graphutils.threed_graph().kmeans_L_array(data, clustered, savedexdir, False, False)
 # Should be given a list of angular momenta [[lx1,ly1,lz1, E1],[lx2...,E2]...]
 def do_hdbscan_LE(arrayinfominpar):
     arrayinfo, minpar = arrayinfominpar
@@ -236,3 +243,115 @@ def do_hdbscan_LE(arrayinfominpar):
     savedexdir = "kmeans_html\\duplimonte_kmeanshtml\\" + arrayinfo[0] + "\\" + arrayinfo[1] + "_WITH_ENERGY"
     graphutils.threed_graph().kmeans_L_array(data, clustered, savedexdir, False, False)
 
+# Second round of hdbscan, with greatfit.
+def do_hdbscan_greatfit(arrayinfominpar):
+
+    # Set up parameters and clusters_to_cluster
+    arrayinfo, minpar, clusters_to_cluster, gccwidths = arrayinfominpar
+
+    # Load in the data
+    with open(windows_directories.duplimontedir + "\\" + arrayinfo[0] + "\\" + arrayinfo[1] + ".txt", 'rb') as f:
+        data = pickle.load(f)
+    data = np.array(data) # as vectors, i.e. 6 columns and len(data) rows. Lx Ly Lz x y z.
+
+    # Set up position data
+    data_pos = data[:, 3:6]
+
+    # Angular data
+    data_L = data[:, 0:3]
+
+    # Grab greatcircle data
+    writer = hdfutils.hdf5_writer(windows_directories.datadir, ascii_info.asciiname)
+
+    # If you want the ones that have been "memberpercented" (i.e. limited by surviving monte-carlo)
+    #greattable = writer.read_table("greatcircles_preliminary", "greatcircles") # theta phi clust_to_try
+
+    # If you want the general ones (non-monte-carlo-refined ones)
+    greattable = writer.read_table("greatcircles_nonmemberpercent_preliminary", "greatcircles") # theta phi clust_to_try
+
+
+    # Set up greatcount and clust3d and comparitor
+    greatcount = galcentricutils.greatcount()
+    clust3d = galcentricutils.cluster3d()
+    compclust = galcentricutils.compclust()
+
+    # Optionally graph
+    grapher = graphutils.threed_graph()
+    #specgrapher = graphutils.spec_graph()
+
+    # Load in the average data, for the sake of "remapping" this data (saves us some effort later.)
+    with open(windows_directories.clusterdir + "\\" + "fullgroup.cluster.txt", 'rb') as f:
+        mean_cluster = pickle.load(f)
+
+    # Get the current "minimum_excess_index" for unique labelling of the cluster excess
+    current_excess_value = np.max(mean_cluster) + 1
+
+    # Identify the indices in "clust_to_try" that match our clusters.
+    greatcircle_clusterindices = []
+    for cluster in clusters_to_cluster:
+        for num, greatcluster in enumerate(greattable['clust_to_try']):
+            if greatcluster == cluster:
+                greatcircle_clusterindices.append(num)
+
+    # For each cluster in clusters_to_cluster...
+    for cluster, great_index, gccwidth in zip(clusters_to_cluster, greatcircle_clusterindices, gccwidths):
+
+        # Grab the great circle
+        theta, phi = greattable[great_index]['theta'], greattable[great_index]['phi']
+
+        # Cut the data by the greatcircle (angular momentum-ly)
+        truefalse, trues = greatcount.gcc_array_retain(data_pos, theta, phi, gccwidth)
+
+        cluster_L = data_L[truefalse]
+
+        # Cluster the greatcircle cut
+        clustered_L = clust3d.listhdbs(cluster_L, minpar)
+
+        # Need to bring clustered_L back to the original length/shape (we only clustered a subsection of meandata)
+        # Replace all greatfit-removed points by -1 (noise)
+        clustered = np.ones(len(truefalse), dtype=int)
+        clustered *= -1
+        clustered[trues] = clustered_L
+
+        # Match to the mean clustering
+        remap = compclust.compclust_multilabel(mean_cluster, clustered, current_excess_value)
+
+        # Save the remap
+        with open(windows_directories.duplimontedir + "\\" + ascii_info.fullgroup +
+                  "\\" + arrayinfo[1] + (".remap-cluster_{0:.0f}.txt").format(cluster), 'wb') as f:
+            pickle.dump(obj=remap, file=f)
+
+        # Generate graphs, too. For debug, mainly.
+        grapher.kmeans_L_array(cluster_L, remap[truefalse],"\\" + "cluster_greatcount_debug" + "\\" + arrayinfo[1] + (".remap-cluster_{0:.0f}_ang").format(cluster), False, True)
+        # Also positions for graphing
+        #cluster_pos = np.array(data_pos[truefalse])
+        #x,y,z = cluster_pos.T
+        #plt.scatter(y,x)
+        #plt.show()
+        #grapher.xmeans_L_array(cluster_pos, remap[truefalse],"\\" + "cluster_greatcount_debug" + "\\" + arrayinfo[1] + (".remap-cluster_{0:.0f}_pos").format(cluster), False, True)
+        #time.sleep(500)
+        #specgrapher.array_thetaphi_debug(cluster_pos, theta, phi, remap[truefalse], cluster)
+    #time.sleep(5000)
+
+# Fit an orbit with the energistics orbifitter using Galpy, then save the fit, for the Monte-Carlo Data Iterations
+def do_orbifit(parameters):
+    import energistics
+
+    # Set up parameters and clusters_to_cluster
+    arrayinfo, table, clusters_to_cluster, iterations, time_to_integrate, number_of_steps = parameters
+
+    # Set up the fitter
+    fitter = energistics.orbifitter()
+
+    # For each cluster to cluster
+    for clust_to_fit in clusters_to_cluster:
+
+        # Run fit
+        clust_fitted = fitter.galpy_final_fitting(table, clust_to_fit, iterations, time_to_integrate,
+                                                  number_of_steps, try_load=True, graph=False,
+                                                  load_fit=False, try_save=False, debug_graph=str(arrayinfo[1]))
+
+        # Save it
+        with open(windows_directories.orbitsfitdir + "\\" + arrayinfo[0] + "_" +
+                  arrayinfo[1] + "_fitted_orbit_" + str(clust_to_fit) + ".txt", "wb") as f:
+            pickle.dump(obj=clust_fitted, file=f)

@@ -1,12 +1,16 @@
 import copy
+import itertools
 import os
 import time
 
 import astropy
 import numpy as np
+from scipy.stats import gaussian_kde
 from astropy.table import Table, unique, vstack
+from astropy import units as u
 
 # Our own stuff.
+from galpy.util import bovy_coords
 from matplotlib.patches import Patch
 
 import galcentricutils
@@ -17,12 +21,14 @@ import windows_directories
 import matplotlib.pyplot as plt
 import matplotlib.ticker as pltick
 import matplotlib.colors as mcolors
-from matplotlib import cm
-
+from matplotlib import cm, rc
 
 # Plotly
 import plotly.express as px
 import plotly.io as plio
+
+from energistics import orbigistics
+
 plio.renderers.default = 'browser'
 import plotly.graph_objects as go
 
@@ -45,6 +51,11 @@ vxvyvz in kms^-1
 lxlylz in kpc kms^-1
 angles in degrees
 """
+
+# Enable TeX
+plt.rcParams['animation.ffmpeg_path'] = 'C:\\Users\\Callicious\\Documents\\Prog\\pycharm\\venv\\ffmpeg\\bin\\ffmpeg.exe'
+rc('font', **{'family': 'serif', 'serif': ['Computer Modern']})
+rc('text', usetex=True)
 
 # 2D Graphing Tools prototyping
 class twod_graph(object):
@@ -186,14 +197,49 @@ class twod_graph(object):
         fig, axs = plt.subplots(nrows=1,ncols=2,sharey='row', gridspec_kw={'width_ratios': [3,1]})
         plt.subplots_adjust(wspace=0.1, hspace=0)
         axs[0].scatter(x, y, marker='x',color='black',s=10)
-        axs[0].set(xlabel="clustering/index",
-               ylabel="n_clust")
+        axs[0].set(xlabel="monte-carlo clustering/index",
+               ylabel="n / clusters")
 
         # Generate a PDF, too.
-        axs[1].hist(y, bins=50, density=True, orientation='horizontal', color='black')
-        plt.suptitle("For " + group)
+        axs[1].hist(y, bins=60, density=True, orientation='horizontal', color='black')
+        axs[1].set(xlabel=r'$\rho$')
+        #plt.suptitle("For " + group.replace("_","\_"))
+        plt.savefig(windows_directories.imgdir + "\\graph_nclust.png", dpi=300)
         plt.show()
 
+    # Create a very fancy histogram plot for the data! (PDF.)
+    def hist_fancy(self, data, nbins, xlabel, ylabel, savepath=None, dencurve=True):
+
+        # Figure
+        fig = plt.figure()
+        # Set up the grid
+        plt.grid(which='major', color='pink')
+        plt.xlabel(xlabel)
+        plt.ylabel(ylabel)
+
+        # Without smooth curve to plot
+        if dencurve == False:
+
+            # With/without range
+            plt.hist(data, bins=nbins, density=True, color='lightblue')
+
+        # With smooth curve to plot over the histogram
+        else:
+            # Do a hist
+            plt.hist(data, bins=nbins, density=True, color='lightblue')
+
+            # Generate smooth plot to pdf
+            kde = gaussian_kde(data)
+            xvalues = np.linspace(np.min(data), np.max(data), 1000)
+            yvalues = kde.evaluate(xvalues)
+            plt.plot(xvalues, yvalues, lw=0.5, color='red')
+
+
+        # Save the figure or plot it
+        if savepath == None:
+            plt.show()
+        else:
+            plt.savefig(savepath + ".png", dpi=300)
 
 # 3D graphing tools prototyping
 class threed_graph(object):
@@ -318,18 +364,24 @@ class threed_graph(object):
             fig.show()
 
     # Except it takes arrays. Savedexdir here should be the directory\\savename
-    def xmeans_L_array(self, array, clusterdata, savedexdir, browser, outliers=False):
+    def xmeans_L_array(self, array, clusterdata, savedexdir, browser, outliers=False, omit=None):
         if outliers == False:
             outlier_index = np.where(clusterdata == -1)[0]
             array = np.delete(array, outlier_index, axis=0)
             clusterdata = np.delete(clusterdata, outlier_index, axis=0)
-            print(len(array), len(clusterdata))
 
         # Need arrays. Make sure.
         if type(array) != "numpy.ndarray":
             array = np.array(array)
         if type(clusterdata) != "numpy.ndarray":
             clusterdata = np.array(clusterdata)
+
+        # If omit isn't none, then remove omitted clusters
+        if omit != None:
+            for i in omit:
+                truefalse = [False if d == i else True for d in clusterdata]
+                clusterdata = clusterdata[truefalse]
+                array = array[truefalse]
 
         x,y,z = array.T
 
@@ -741,6 +793,7 @@ class spec_graph(object):
                 gccthetas, gccphis = gcc_thetaphis
                 axs.scatter(gccthetas, gccphis, color="blue", s=0.1)
                 legend_elements.append(Patch(edgecolor='white',facecolor='blue',label='GCC Fit'))
+
             plt.legend(loc='upper right', handles=legend_elements)
             axs.set_facecolor("k")
             plt.gca().invert_xaxis()
@@ -755,6 +808,44 @@ class spec_graph(object):
                     pass
                 plt.savefig(windows_directories.imgdir + "\\" + "vasiliev"+ "\\" + savedexdir + "_thetaphi.png", dpi=300)
             #plt.show()
+
+    # above but for arrays [v1, v2, v3] and will plot ALL points alongside the greatcircle theta/phi. Debug purposes.
+    def array_thetaphi_debug(self, array, theta, phi, clusters, whichclust):
+        # Get angular
+        ang = galcentricutils.angular()
+        # Get polars
+        polars = [ang.vec_polar(d) for d in array]
+        rads,thets,phis = np.array(polars).T
+        # Sort plots
+        fig, axs = plt.subplots(nrows=1,ncols=1)
+        axs.grid(True, which='major', alpha=1, linewidth=0.25, color="black")  # Enable grids on subplot
+        axs.grid(True, which='minor', alpha=1, linewidth=0.25, color="black")
+        # Sort colours/points for the cluster of interest.
+        is_cluster = [True if d == whichclust else False for d in clusters]
+        is_not = [True if d != whichclust else False for d in clusters]
+        # The non members
+        axs.scatter(thets[is_not], phis[is_not], color="red", s=5, marker="s")
+        # Do the plots for the cluster members
+        axs.scatter(thets[is_cluster], phis[is_cluster], color="green", s=3, marker="s")
+        legend_elements = []
+        legend_elements.append(Patch(edgecolor='white',
+                                     facecolor='red',
+                                     label="Not Cluster"))
+        legend_elements.append(Patch(edgecolor='white',
+                                     facecolor='green',
+                                     label="In Cluster"))
+        # We can also add a great circle (though this necessitates a legend.)
+        gccthetas, gccphis = galcentricutils.greatfit().gcc_gen(1000, theta, phi)
+        axs.scatter(gccthetas, gccphis, color="blue", s=0.1)
+        legend_elements.append(Patch(edgecolor='white',facecolor='blue',label='GCC Fit'))
+        plt.legend(loc='upper right', handles=legend_elements)
+        axs.set_facecolor("k")
+        plt.gca().invert_xaxis()
+        axs.grid(color="white")
+        axs.set(xlabel=r'$\theta$',
+                ylabel=r'$\phi$')
+        plt.title(str(whichclust))
+        plt.show()
 
     # Misc func for handling image tiling.
     # https://stackoverflow.com/questions/37921295/python-pil-image-make-3x3-grid-from-sequence-images
@@ -836,5 +927,101 @@ class spec_graph(object):
                 print("Failed removing image in graphtuils/sofie", image)
                 time.sleep(9999999999)
 
+    # Orbit graphing. Take an orbit, a data table, and produce a menagerie of plots demonstrating the fit.
+    def orbiplot(self, table, clustering, clust_to_fit, orbit, integration_time, number_of_steps, directory, unique_text, method='dopr54_c'):
 
+        # Get clustering
+        truefalse = [True if d == clust_to_fit else False for d in clustering]
+        data_to_fit = table[truefalse]
+
+        # Define Orbigist
+        orbigist = orbigistics()
+
+        # Integrate the orbit
+        forward = copy.deepcopy(orbit)
+        backward = copy.deepcopy(orbit)
+
+        # Do integrals and append these orbit objects to lists
+        forward.integrate(t=np.linspace(0, integration_time, number_of_steps)*u.yr,
+                          pot=orbigist.pot,
+                          method=method)
+        backward.integrate(t=-1 * np.linspace(0, integration_time, number_of_steps)*u.yr,
+                           pot=orbigist.pot,
+                           method=method)
+
+        # Obtain Galactocentric Cylindricals for the model
+        orbits = np.concatenate([forward.getOrbit(), backward.getOrbit()], axis=0)
+        R, vR, vT, z, vz, phi = orbits.T
+        R *= orbigist.rovo[0]
+        vR *= orbigist.rovo[1]
+        vT *= orbigist.rovo[1]
+        z *= orbigist.rovo[0]
+        vz *= orbigist.rovo[1]
+        model_orbits = [R, vR, vT, z, vz, phi]
+
+        # Also find it for the data
+        data_to_fit = orbigist.converter.nowrite_GAL_to_GALCENT(data_to_fit)
+        Rdata, vRdata, vTdata, zdata, vzdata, phidata = orbigist.get_leftgalpy(data_to_fit)
+        data_orbits = [Rdata, vRdata, vTdata, zdata, vzdata, phidata]
+
+        # Define the rows/columns
+        labels = ["R / kpc", "vR / kms" + r'$^{-1}$', "vT / kms" + r'$^{-1}$', "z / kpc",
+                  "vz / kms" + r'$^{-1}$', r'$\phi$' + " / rad"]
+        saveid = ["R", "vR", "vT", "z", "vz", "phi"]
+
+        # Get permutations for plotting (unique permutations)
+        """
+        6 unique
+        2 in a combo
+        6C2 is 6!/(4!*2!) = 15
+        Hence a 5x3 graph.
+        """
+        num_permutations = list(itertools.combinations(np.arange(0,6,1), 2))
+
+        # The plot saveid list for the permutations
+        plotids = []
+
+        # Create each individual plot
+        for permutation in num_permutations:
+
+            # Set up figure
+            fig, ax = plt.subplots(nrows=1,ncols=1)
+
+            # Plot the model
+            ax.scatter(model_orbits[permutation[0]], model_orbits[permutation[1]], color='red', s=0.3, marker='x')
+
+            # Plot the data
+            ax.scatter(data_orbits[permutation[0]], data_orbits[permutation[1]], color='black', s=0.9, marker='x')
+
+            # Generate the range for the plotting and set lims
+            xlength = np.max(data_orbits[permutation[0]]) - np.min(data_orbits[permutation[0]])
+            ylength = np.max(data_orbits[permutation[1]]) - np.min(data_orbits[permutation[1]])
+            xlim = [np.min(data_orbits[permutation[0]]) - 0.05 * xlength, np.max(data_orbits[permutation[0]]) + 0.05 * xlength]
+            ylim = [np.min(data_orbits[permutation[1]]) - 0.05 * ylength, np.max(data_orbits[permutation[1]]) + 0.05 * ylength]
+            ax.set(xlim=xlim, ylim=ylim)
+
+            # Generate the legend
+            legend_elements = [Patch(edgecolor='gray', facecolor='red', label='Fit'),
+                               Patch(edgecolor='gray', facecolor='black', label='Data')]
+            plt.legend(handles=legend_elements, loc='upper right')
+
+            # Set the label
+            ax.set(xlabel=labels[permutation[0]], ylabel=labels[permutation[1]])
+            plt.grid(which='major', color='pink')
+
+            # Generate save ID
+            this_save = directory + "\\" + saveid[permutation[0]] + "_" + \
+                        saveid[permutation[1]] + "_" + unique_text + ".png"
+            plotids.append(this_save)
+
+            # Save the figure
+            plt.savefig(this_save, dpi=150)
+            plt.close()
+
+        # Clip the images together, now.
+        # https://stackoverflow.com/questions/30227466/combine-several-images-horizontally-with-python
+        list_im = plotids
+        imgs = [PIL.Image.open(i) for i in list_im]
+        grid = self.image_grid(imgs, rows=3, cols=5)
+        grid.save(directory + "\\" + 'orbifitplot.jpg')
 
