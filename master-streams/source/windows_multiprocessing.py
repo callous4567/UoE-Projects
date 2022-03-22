@@ -349,9 +349,37 @@ def do_orbifit(parameters):
         # Run fit
         clust_fitted = fitter.galpy_final_fitting(table, clust_to_fit, iterations, time_to_integrate,
                                                   number_of_steps, try_load=True, graph=False,
-                                                  load_fit=False, try_save=False, debug_graph=str(arrayinfo[1]))
+                                                  load_fit=False, try_save=False, debug_graph=None)
 
         # Save it
         with open(windows_directories.orbitsfitdir + "\\" + arrayinfo[0] + "_" +
                   arrayinfo[1] + "_fitted_orbit_" + str(clust_to_fit) + ".txt", "wb") as f:
+            pickle.dump(obj=clust_fitted, file=f)
+
+# Fit an orbit with the energistics orbifitter using Galpy, then save the fit, for the Monte-Carlo Data Iterations
+# Specific for maindata (no membership table applicable- just the maindata clustering.)
+def do_orbifit_maindata(parameters):
+    import energistics
+
+    # Set up parameters and clusters_to_cluster
+    arrayinfo, table, clusters_to_cluster, iterations, time_to_integrate, number_of_steps = parameters
+
+    # Set up the fitter
+    fitter = energistics.orbifitter()
+
+    # Grab the clustering
+    with open(windows_directories.clusterdir + "\\" + "fullgroup.cluster.txt", 'rb') as f:
+        clustered = pickle.load(file=f)
+
+    # For each cluster to cluster
+    for clust_to_fit in clusters_to_cluster:
+
+        # Run fit
+        clust_fitted = fitter.galpy_fitting_nomemb(table, clustered, clust_to_fit, iterations, time_to_integrate,
+                                                   number_of_steps, try_load=True, graph=False,
+                                                   load_fit=False, try_save=False, extra_text="orbifit_maindata_run")
+
+        # Save it
+        with open(windows_directories.orbitsfitdir + "\\" + arrayinfo[0] + "_" +
+                  arrayinfo[1] + "_fitted_orbit_maindata_" + str(clust_to_fit) + ".txt", "wb") as f:
             pickle.dump(obj=clust_fitted, file=f)

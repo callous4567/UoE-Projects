@@ -1,13 +1,16 @@
 import copy
+import itertools
 import os
 import pickle
+import warnings
 
 from matplotlib.patches import Patch
-
+from scipy.signal import convolve
+from scipy.stats import gaussian_kde
 import ascii_info
+import energistics_constants
 import hdfutils
 from galpy.util import bovy_coords
-
 import galcentricutils
 import time
 import numpy as np
@@ -26,6 +29,11 @@ import windows_directories
 import scipy.interpolate as interpolate
 import scipy.spatial as spatial
 
+# Define GM_sun dimensionlessly
+GM_sun = iau.GM_sun.value
+
+# Get E-Factor for fast-energistics
+E_factor = (((u.m ** 3) * (u.s ** (-2)) * (u.kpc ** (-1))).to(u.km ** 2 / u.s ** 2))
 # This file handles various energy-orbit related things-
 # separated because galpy takes a while to load on Windows.
 # Note that we're doing our best to avoid units in our tables-
@@ -33,7 +41,6 @@ import scipy.spatial as spatial
 # SAVE AS A BASIC TABLE WITHOUT AN ASTROPY UNITS INSIDE!!!!!!
 # Earlier code was made without considering units inside tables
 # Do not go against this.
-
 
 """
 # A note on Galpy Config:
@@ -67,6 +74,8 @@ perpendicular to x in the direction of Galactic rotation at
 the Sun’s position, and z increasing towards the direction of 
 the North Galactic Pole."
 """
+
+
 # Generate energy and other associated potential properties for data, including circularity.
 # Built for Astropy Tables- the table should have no quantities attached, but otherwise be in standard units.
 class energistics(object):
@@ -85,46 +94,47 @@ class energistics(object):
         """
         ro = np.abs(self.converter.sol_params[0][0])
         vo = np.abs(self.converter.sol_params[2][1])
-        self.rovo = [ro,vo] # in units of kpc and kms^-1 cylindrically.
-        self.zo = np.abs(self.converter.sol_params[0][2]) # baggage for orbigistics
+        self.rovo = [ro, vo]  # in units of kpc and kms^-1 cylindrically.
+        self.zo = np.abs(self.converter.sol_params[0][2])  # baggage for orbigistics
 
         # Next up is to set up the potential amplitudes for galpy. Instantiate all this in natural units.
-        amp_hernquist = 2*M_b*iau.GM_sun
-        amp_miyanagai = M_d*iau.GM_sun
-        A_nfw = np.log(1+c_nfw) - (c_nfw/(1+c_nfw)) # see material.
-        amp_nfw = M_nfw*iau.GM_sun/A_nfw
+        amp_hernquist = 2 * M_b * iau.GM_sun
+        amp_miyanagai = M_d * iau.GM_sun
+        A_nfw = np.log(1 + c_nfw) - (c_nfw / (1 + c_nfw))  # see material.
+        amp_nfw = M_nfw * iau.GM_sun / A_nfw
+        self.amp_nfw = amp_nfw
 
         # Set up the potentials...
 
         # Hernquist Bulge, Miyamoto-Nagai Disk, NFW Halo. 
         self.bulge = potential.HernquistPotential(amp=amp_hernquist,
-                                                  a=a_b*u.kpc,
+                                                  a=a_b * u.kpc,
                                                   normalize=False,
-                                                  ro=ro*u.kpc,
-                                                  vo=vo*u.km/u.s)
+                                                  ro=ro * u.kpc,
+                                                  vo=vo * u.km / u.s)
         self.disk = potential.MiyamotoNagaiPotential(amp=amp_miyanagai,
-                                                     a=a_d*u.kpc,
-                                                     b=b_d*u.kpc,
+                                                     a=a_d * u.kpc,
+                                                     b=b_d * u.kpc,
                                                      normalize=False,
-                                                     ro=ro*u.kpc,
-                                                     vo=vo*u.km/u.s)
+                                                     ro=ro * u.kpc,
+                                                     vo=vo * u.km / u.s)
         self.halo = potential.NFWPotential(amp=amp_nfw,
-                                           a=a_nfw*u.kpc,
+                                           a=a_nfw * u.kpc,
                                            normalize=False,
-                                           ro=ro*u.kpc,
-                                           vo=vo*u.km/u.s)
-        self.pot = self.bulge+self.disk+self.halo
+                                           ro=ro * u.kpc,
+                                           vo=vo * u.km / u.s)
+        self.pot = self.bulge + self.disk + self.halo
         # This is the Bovy 2015 potential, but with our own ro/vo
         # https://docs.galpy.org/en/v1.7.0/reference/potential.html
         bp = PowerSphericalPotentialwCutoff(alpha=1.8, rc=1.9 / ro, normalize=0.05, ro=ro, vo=vo)
         dp = MiyamotoNagaiPotential(a=3. / ro, b=0.28 / ro, normalize=.6, ro=ro, vo=vo)
-        hp = NFWPotential(a=16 / ro, normalize=.35, ro=ro,vo=vo)
+        hp = NFWPotential(a=16 / ro, normalize=.35, ro=ro, vo=vo)
         self.pot2014 = bp + dp + hp
 
     # DEPRECATED
     # This is purely for debugging- plot the rotcurve for our potential vs. Bovy 2015 potential.
     def rotcurve(self):
-        plotRotcurve(MWPotential2014, label=r'$\mathrm{MWPotential2014 Bovy}$', ro=self.rovo[0],vo=self.rovo[1])
+        plotRotcurve(MWPotential2014, label=r'$\mathrm{MWPotential2014 Bovy}$', ro=self.rovo[0], vo=self.rovo[1])
         plotRotcurve(self.pot, overplot=True, label=r'$Model$')
         plotRotcurve(self.pot2014, overplot=True, label=r'Bovy 2014, with mod')
         plt.legend()
@@ -135,21 +145,46 @@ class energistics(object):
     """
     v^2/2 + phi = total 
     """
+
     def pot_eval(self, table):
         # QTable it- instead of the entire column label being "unit" each value is labelled "unit."
         qtable = QTable(table)
         # Get cylindrical R and Z in units
-        qtable['R'] = np.sqrt(qtable['x']**2 + qtable['y']**2) * u.kpc
+        qtable['R'] = np.sqrt(qtable['x'] ** 2 + qtable['y'] ** 2) * u.kpc
         qtable['z'] = qtable['z'] * u.kpc
         # Evaluate potential
         table['pot'] = potential.evaluatePotentials(self.pot,
-                                                    qtable['R'], #R
-                                                    qtable['z'], #Z
+                                                    qtable['R'],  # R
+                                                    qtable['z'],  # Z
                                                     )
         # Evaluate kinetic
-        table['kinetic'] = (1/2)*np.sqrt(qtable['vx']**2 +
-                                         qtable['vy']**2 +
-                                         qtable['vz']**2) * u.km**2/u.s**2
+        table['kinetic'] = (1 / 2) * (qtable['vx'] ** 2 +
+                                      qtable['vy'] ** 2 +
+                                      qtable['vz'] ** 2) * u.km ** 2 / u.s ** 2
+        # Set total
+        table['energy'] = table['pot'] + table['kinetic']
+        # Return.
+        return table
+
+    # Evaluate with McMillan 2017 Potential
+    def pot_millan(self, table):
+        # Import Pricy Potential
+        from galpy.potential.mwpotentials import McMillan17
+
+        # QTable it- instead of the entire column label being "unit" each value is labelled "unit."
+        qtable = QTable(table)
+        # Get cylindrical R and Z in units
+        qtable['R'] = np.sqrt(qtable['x'] ** 2 + qtable['y'] ** 2) * u.kpc
+        qtable['z'] = qtable['z'] * u.kpc
+        # Evaluate potential
+        table['pot'] = potential.evaluatePotentials(McMillan17,
+                                                    qtable['R'],  # R
+                                                    qtable['z'],  # Z
+                                                    )
+        # Evaluate kinetic
+        table['kinetic'] = (1 / 2) * (qtable['vx'] ** 2 +
+                                      qtable['vy'] ** 2 +
+                                      qtable['vz'] ** 2) * u.km ** 2 / u.s ** 2
         # Set total
         table['energy'] = table['pot'] + table['kinetic']
         # Return.
@@ -159,7 +194,10 @@ class energistics(object):
 Energistics but manually defined- see notes.
 All given positions must be as astropy quantities.
 This was just for debugging to ensure that the galpy cooperates- see https://github.com/jobovy/galpy/issues/462
+Updated to leverage numba (for the sake of entropy plotting.) 
 """
+
+
 class energistics_manual(object):
     def __init__(self):
         # Grab the parameters of the solar system in the galactocentric frame- use galcentricutils.
@@ -175,78 +213,256 @@ class energistics_manual(object):
         """
         ro = np.abs(converter.sol_params[0][0])
         vo = np.abs(converter.sol_params[2][1])
-        self.rovo = [ro,vo]
+        self.rovo = [ro, vo]
 
         # Calculate the value of A_NFW (saves processing time- it's a chonker.)
-        A_nfw = np.log(1+c_nfw) - (c_nfw/(1+c_nfw))
-        self.ampnfw = -iau.GM_sun*M_nfw/A_nfw # -1*GMvir/A
+        self.A_nfw = np.log(1 + c_nfw) - (c_nfw / (1 + c_nfw))
+        self.ampnfw = -iau.GM_sun * M_nfw / self.A_nfw  # -1*GMvir/A
+
+        # Set up fast
+        self.fast = fast_energistics()
 
     # Hernquist Potential.
     def hernquist(self, x, y, z):
-        r = np.sqrt(x**2 + y**2 + z**2)
-        return (-iau.GM_sun*M_b/(r + (a_b*u.kpc))).to(u.km**2/u.s**2)
+        r = np.sqrt(x ** 2 + y ** 2 + z ** 2)
+        return (-iau.GM_sun * M_b / (r + (a_b * u.kpc))).to(u.km ** 2 / u.s ** 2)
 
     # Miyamoto-Nagai
     def nagai(self, x, y, z):
-        R_cisq = x**2 + y**2
-        Z_circ = np.sqrt(z**2 + (u.kpc * b_d)**2)
-        full_R = np.sqrt(R_cisq + (Z_circ + (u.kpc * a_d))**2)
-        return (-iau.GM_sun*M_d/full_R).to(u.km**2/u.s**2)
+        R_cisq = x ** 2 + y ** 2
+        Z_circ = np.sqrt(z ** 2 + (u.kpc * b_d) ** 2)
+        full_R = np.sqrt(R_cisq + (Z_circ + (u.kpc * a_d)) ** 2)
+        return (-iau.GM_sun * M_d / full_R).to(u.km ** 2 / u.s ** 2)
 
     # Navarro-Frenk-White
     def nfw(self, x, y, z):
-        r = np.sqrt(x**2 + y**2 + z**2)
-        return ((self.ampnfw*np.log(1 + r/(a_nfw*u.kpc)))/r).to(u.km**2/u.s**2)
+        r = np.sqrt(x ** 2 + y ** 2 + z ** 2)
+        return ((self.ampnfw * np.log(1 + r / (a_nfw * u.kpc))) / r).to(u.km ** 2 / u.s ** 2)
 
     # Full Potential
     def pot(self, x, y, z):
-        return self.hernquist(x,y,z) + self.nagai(x,y,z) + self.nfw(x,y,z)
+        return self.hernquist(x, y, z) + self.nagai(x, y, z) + self.nfw(x, y, z)
 
     # Evaluate potentials for Table alongside Total Energy
     """
     v^2/2 + phi = total 
     """
+
     def pot_eval(self, table, savedexdir):
         qtable = QTable(table)
-        qtable['x'],qtable['y'],qtable['z'] = qtable['x']*u.kpc,\
-                                              qtable['y']*u.kpc,\
-                                              qtable['z']*u.kpc
-        # Evaluate potential
-        qtable['pot'] = self.pot(qtable['x'],qtable['y'],qtable['z'])
-        # Evaluate for the solar system, too.debug
-        """
-        R_sol = self.rovo[0]
-        z_sol = 0 # approx.
-        r_sol = np.sqrt(R_sol**2 + z_sol**2)
-        solunitstab = Table([[R_sol], [z_sol], [r_sol]], names=['R','z','r'])
-        solunitstab['pot'] = potential.evaluatePotentials(self.pot,
-                                                          R=solunitstab['R'],
-                                                          z=solunitstab['z'],
-                                                          t=0) """
-
-        # Evaluate kinetic
-        qtable['kinetic'] = (1/2)*np.sqrt(qtable['vx']**2 +
-                                          qtable['vy']**2 +
-                                          qtable['vz']**2) * u.km**2/u.s**2
+        qtable['x'], qtable['y'], qtable['z'] = qtable['x'] * u.kpc, \
+                                                qtable['y'] * u.kpc, \
+                                                qtable['z'] * u.kpc
 
         # Set total
-        qtable['energy'] = qtable['pot'] + qtable['kinetic']
-        fig = plt.figure(figsize=(20,20))
-        plt.scatter(qtable['Lz'],qtable['energy'],marker="x",s=2, color='green')
-        plt.xlim([-6000,6000])
-        plt.ylim([-175000,0])
+        qtable['energy'] = self.fast.E_c(table['x'], table['y'], table['z'], table['vx'], table['vy'], table['vz'],
+                                         M_b, a_b, M_d, a_d, b_d, M_nfw, a_nfw, c_nfw) * (u.km ** 2 / u.s ** 2)
+        fig = plt.figure(figsize=(20, 20))
+        plt.scatter(qtable['Lz'], qtable['energy'], marker="x", s=2, color='green')
+        plt.xlim([-6000, 6000])
+        plt.ylim([-175000, 0])
         plt.xlabel(r'$L_z$')
         plt.ylabel(r'$E$')
 
         # Als evaluate and overplot using automatic energistics
         table_orig = energistics().pot_eval(table)
-        plt.scatter(table_orig['Lz'],table_orig['energy'],marker="x",s=0.5,color='red')
+        plt.scatter(table_orig['Lz'], table_orig['energy'], marker="x", s=0.5, color='red')
 
         # Save and show.
-        plt.savefig(windows_directories.imgdir + savedexdir + ".png",dpi=600)
+        if savedexdir != None:
+            plt.savefig(windows_directories.imgdir + savedexdir + ".png", dpi=600)
         plt.show(dpi=300)
 
         # Return.
+        return table
+
+
+"""
+Numba-fied version of energistics_manual, for fast potential calculations in entropy plotting.
+Confirmed with testing that it matches galpy results for energy, and is faster in doing so. 
+Will work on either numpy arrays of data, or individual points. 
+"""
+
+
+class fast_energistics(object):
+    def __init__(self):
+        """
+        This is the set of constants for energistics to model the bulge, disk, and halo.
+        Note that these have all been taken from Helmer-Helmi 2019 paper.
+        https://www.aanda.org/articles/aa/abs/2019/05/aa34769-18/aa34769-18.html
+        Energistics will use these in calculating amplitudes and etc for using GALPY.
+
+        You should note that energistics introduces astropy units/quantities on top of these-
+        Provide the values here RAW and WITHOUT UNITS.
+
+        These are provided here as an example of how to format/provide them for plotting/calculations.
+
+        # Hernquist Bulge. Mass in solmas. Scale in kpc.
+        M_b = 3e10  # bulge mass
+        a_b = 0.7  # radial scale
+
+        # Miyamoto-Nagai Constants.
+        M_d = 9.3e10  # disk mass
+        a_d, b_d = 6.5, 0.26  # thick and thin scale
+
+        # NFW Profile Constants.
+        M_nfw = 1e12  # virial halo mass
+        c_nfw = 12  # concentration ratio (virial radius divided by scale radius)
+        a_nfw = 21.5  # radial scale
+
+        # Calculate the value of A_NFW (saves processing time- it's a chonker.)
+        A_nfw = np.log(1+c_nfw) - (c_nfw/(1+c_nfw))
+        ampnfw = -iau.GM_sun*M_nfw/A_nfw
+        """
+
+        """ 
+        For the unit analysis...
+        - all M are in Solar Masses, and provided dimensionless
+        - all a/b are in kpc, and provided dimensionless
+        
+        N m2⋅kg–2 = units of G
+        N m2⋅kg–1= units of GMsun = m^3/s^2 
+        
+        We want units of u.km**2 / u.s**2 for the energy!
+        
+        For Hernquist:
+        - GM_sun*M_b are in units of m^3/s^2 *convert to km^3/s^2* now km^3/s^2
+        - r/a_b are in units of kpc *convert to km* now km
+        - result is now in km^2/s^2
+        - the net product, without conversion, using defaults, is in the units of: m^3s^-2kpc^-1 
+        
+        For Miyamoto-Nagai:
+        - GM_sun*M_d are in m^3/s^2 *convert to km^3/s^2* now km^3/s^2
+        - full_R in units of kpc *convert to km* now km 
+        - result is now in km^2/s^2
+        - the net product, without conversion, is also in units of m^3s^-2kpc^-1 
+        
+        For NFW Halo:
+        - GM_sun*M_nfw is in units of m^3/s^2 *convert to km^3/s^2* now km^3/s^2 
+        - ampnfw is in units of ^ (km^3/s^2)
+        - r is in units of kpc *convert to km* now km
+        - result is now in km^2/s^2 
+        - the net product is also in units of m^3s^-2kpc^-1
+        
+        The result of this is:
+        - If you feed in the default values of GM_sun from astropy, in m^3/s^2
+        - With all other values in regular astronomical kpc units
+        - You need to convert m^3s^-2kpc^-1 to km^2s^-2 
+        - The conversion factor can be calculated via division to make this work. 
+        """
+
+    @staticmethod
+    @njit(fastmath=True)
+    def hernquist(x, y, z, M_b, a_b):
+        r = np.sqrt(x ** 2 + y ** 2 + z ** 2)
+        return -1 * GM_sun * M_b / (r + a_b)
+
+    @staticmethod
+    @njit(fastmath=True)
+    def nagai(x, y, z, M_d, a_d, b_d):
+        R_cisq = x ** 2 + y ** 2
+        Z_circ = np.sqrt(z ** 2 + b_d ** 2)
+        full_R = np.sqrt(R_cisq + (Z_circ + a_d) ** 2)
+        return -GM_sun * M_d / full_R
+
+    @staticmethod
+    @njit(fastmath=True)
+    def nfw(x, y, z, ampnfw, a_nfw):
+        r = np.sqrt(x ** 2 + y ** 2 + z ** 2)
+        return ((ampnfw * np.log(1 + r / a_nfw)) / r)
+
+    # Evaluate the full potential energy/etc
+    @staticmethod
+    @njit(fastmath=True)
+    def fast_pot(x, y, z, M_b, a_b, M_d, a_d, b_d, ampnfw, a_nfw):
+        def hernquist(xx, yy, zz):
+            r = np.sqrt(xx ** 2 + yy ** 2 + zz ** 2)
+            return -1 * GM_sun * M_b / (r + a_b)
+
+        def nagai(xx, yy, zz):
+            R_cisq = xx ** 2 + yy ** 2
+            Z_circ = np.sqrt(zz ** 2 + b_d ** 2)
+            full_R = np.sqrt(R_cisq + (Z_circ + a_d) ** 2)
+            return -GM_sun * M_d / full_R
+
+        def nfw(xx, yy, zz):
+            r = np.sqrt(xx ** 2 + yy ** 2 + zz ** 2)
+            return ((ampnfw * np.log(1 + r / a_nfw)) / r)
+
+        return E_factor * (hernquist(x, y, z) + nagai(x, y, z) + nfw(x, y, z))
+
+    # Evaluate the total energy.
+    @staticmethod
+    @njit(fastmath=True)
+    def E(x, y, z, vx, vy, vz, M_b, a_b, M_d, a_d, b_d, ampnfw, a_nfw):
+        def hernquist(xx, yy, zz):
+            r = np.sqrt(xx ** 2 + yy ** 2 + zz ** 2)
+            return -1 * GM_sun * M_b / (r + a_b)
+
+        def nagai(xx, yy, zz):
+            R_cisq = xx ** 2 + yy ** 2
+            Z_circ = np.sqrt(zz ** 2 + b_d ** 2)
+            full_R = np.sqrt(R_cisq + (Z_circ + a_d) ** 2)
+            return -GM_sun * M_d / full_R
+
+        def nfw(xx, yy, zz):
+            r = np.sqrt(xx ** 2 + yy ** 2 + zz ** 2)
+            return ((ampnfw * np.log(1 + r / a_nfw)) / r)
+
+        return E_factor * (hernquist(x, y, z) + nagai(x, y, z) + nfw(x, y, z)) + (1 / 2) * (vx ** 2 + vy ** 2 + vz ** 2)
+
+    # The above, but will instead take the mass and concentration of the NFW Halo
+    # Evaluate the full potential energy/etc
+    @staticmethod
+    @njit(fastmath=True)
+    def fast_pot_c(x, y, z, M_b, a_b, M_d, a_d, b_d, M_nfw, a_nfw, c_nfw):
+        A_nfw = np.log(1 + c_nfw) - (c_nfw / (1 + c_nfw))
+        ampnfw = -GM_sun * M_nfw / A_nfw  # -1*GMvir/A
+
+        def hernquist(xx, yy, zz):
+            r = np.sqrt(xx ** 2 + yy ** 2 + zz ** 2)
+            return -1 * GM_sun * M_b / (r + a_b)
+
+        def nagai(xx, yy, zz):
+            R_cisq = xx ** 2 + yy ** 2
+            Z_circ = np.sqrt(zz ** 2 + b_d ** 2)
+            full_R = np.sqrt(R_cisq + (Z_circ + a_d) ** 2)
+            return -GM_sun * M_d / full_R
+
+        def nfw(xx, yy, zz):
+            r = np.sqrt(xx ** 2 + yy ** 2 + zz ** 2)
+            return ((ampnfw * np.log(1 + r / a_nfw)) / r)
+
+        return E_factor * (hernquist(x, y, z) + nagai(x, y, z) + nfw(x, y, z))
+
+    # Evaluate the total energy.
+    @staticmethod
+    @njit(fastmath=True)
+    def E_c(x, y, z, vx, vy, vz, M_b, a_b, M_d, a_d, b_d, M_nfw, a_nfw, c_nfw):
+        A_nfw = np.log(1 + c_nfw) - (c_nfw / (1 + c_nfw))
+        ampnfw = -GM_sun * M_nfw / A_nfw  # -1*GMvir/A
+
+        def hernquist(xx, yy, zz):
+            r = np.sqrt(xx ** 2 + yy ** 2 + zz ** 2)
+            return -1 * GM_sun * M_b / (r + a_b)
+
+        def nagai(xx, yy, zz):
+            R_cisq = xx ** 2 + yy ** 2
+            Z_circ = np.sqrt(zz ** 2 + b_d ** 2)
+            full_R = np.sqrt(R_cisq + (Z_circ + a_d) ** 2)
+            return -GM_sun * M_d / full_R
+
+        def nfw(xx, yy, zz):
+            r = np.sqrt(xx ** 2 + yy ** 2 + zz ** 2)
+            return ((ampnfw * np.log(1 + r / a_nfw)) / r)
+
+        return E_factor * (hernquist(x, y, z) + nagai(x, y, z) + nfw(x, y, z)) + (1 / 2) * (vx ** 2 + vy ** 2 + vz ** 2)
+
+    # Do E_c, by default values, on a table
+    def default_E_c(self, table):
+
+        table['E'] = self.E_c(table['x'], table['y'], table['z'], table['vx'], table['vy'], table['vz'],
+                              M_b, a_b, M_d, a_d, b_d, M_nfw, a_nfw, c_nfw)
         return table
 
 # Class for dealing with galpy orbits. Inherits from energistics.
@@ -254,6 +470,7 @@ class energistics_manual(object):
 class orbigistics(energistics):
     def __init__(self):
         energistics.__init__(self)
+        self.fast = fast_energistics()
 
     # Just get a regular array, non-vectorized, [R, vR...etc]. Phi here are in radians. [-pi,pi.]
     def get_leftgalpy(self, table):
@@ -274,8 +491,6 @@ class orbigistics(energistics):
         z, \
         vz, \
         phi = galcentricutils.angular().left_numba_cylindrical(data_array)  # phi in radians.
-        #phi = [d + 2 * np.pi if d < 0 else d for d in phi]  # make sure all phi are [0,360]
-        #phi = np.array(phi)
         return R, vR, vT, z, vz, phi
 
     # Just get a qtable with R, vR, vT, z, vz, phi, in the Galpy system. Phi are in degrees and with units. [-pi,pi]
@@ -300,42 +515,40 @@ class orbigistics(energistics):
         qtable = self.get_orbitqtable(table)
 
         # Set up orbit objects for each row.
-        orbits = orbit.Orbit(vxvv=[qtable['R'],qtable['vR'],qtable['vT'],qtable['z'],qtable['vZ'],qtable['phi']],
-                             ro=self.rovo[0]*u.kpc,
-                             vo=self.rovo[1]*u.km/u.s,
-                             zo=self.zo*u.kpc)
+        orbits = orbit.Orbit(vxvv=[qtable['R'], qtable['vR'], qtable['vT'], qtable['z'], qtable['vZ'], qtable['phi']],
+                             ro=self.rovo[0] * u.kpc,
+                             vo=self.rovo[1] * u.km / u.s,
+                             zo=self.zo * u.kpc)
         # Option to return the qtable, also
         return orbits
 
     # Evaluate E, Phi, kin, and circ and dump inside the table, provided the orbits and interpolation range for circ.
-    def circularity(self, orbits, table, interpar):
+    def circularity(self, table, interpar):
         # Evaluate orbit energies
-        table['E'] = orbits.E(pot=self.pot).to(u.km**2 / u.s**2).value \
-                     + 0.5*(table['vx']**2 + table['vy']**2 + table['vz']**2)
+        table = self.fast.default_E_c(table)
         table['bound'] = [True if E <= 0 else False for E in table['E']]
 
         # Set up an interp1d object for potential and vcirc over our range.
-        R_vals = np.linspace(interpar[0][0], interpar[0][1], interpar[1])*u.kpc
-        E_vals = potential.evaluatePotentials(self.pot, R_vals, 0) + (1/2)*potential.vcirc(self.pot, R_vals)**2
+        R_vals = np.linspace(interpar[0][0], interpar[0][1], interpar[1]) * u.kpc
+        E_vals = potential.evaluatePotentials(self.pot, R_vals, 0) + (1 / 2) * potential.vcirc(self.pot, R_vals) ** 2
         R_func = interpolate.interp1d(x=E_vals, y=R_vals, kind='cubic', fill_value='extrapolate')
 
-
         # Get the R for all our energies (corresponding to circular orbit)
-        R_E = R_func(table['E'])*u.kpc
+        R_E = R_func(table['E']) * u.kpc
         vcirc_E = potential.vcirc(self.pot, R_E)
-        L_E = R_E*vcirc_E
+        L_E = R_E * vcirc_E
 
         # Finally, circularity
-        circ = (table['Lz']*u.kpc*u.km/u.s)/L_E
+        circ = (table['Lz'] * u.kpc * u.km / u.s) / L_E
         table['circ'] = circ.value
         return table
 
     # Orbits and Circularity
     def orbilarity(self, table):
-        interpar = [[0.1,50], 4000]
-        orbits = self.orbits(table)
-        circus = self.circularity(orbits, table, interpar)
+        interpar = [[0.1, 50], 4000]
+        circus = self.circularity(table, interpar)
         return circus
+
 
 # Class for fitting Galpy related things. Packed with static methods! Inherits from Angular for cylindrical coords.
 class orbifitter():
@@ -371,7 +584,8 @@ class orbifitter():
         def least_squares(data, model, probabilities):
             # Get all metrics to generate least squares
             x, y, z = data[:, 0] * np.cos(data[:, 5]), data[:, 0] * np.sin(data[:, 5]), data[:, 3]
-            x_model, y_model, z_model = model[:, 0] * np.cos(model[:, 5]), model[:, 0] * np.sin(model[:, 5]), model[:,3]
+            x_model, y_model, z_model = model[:, 0] * np.cos(model[:, 5]), model[:, 0] * np.sin(model[:, 5]), model[:,
+                                                                                                              3]
             vR, vT, vz = data[:, 1], data[:, 2], data[:, 4]
             vR_model, vT_model, vz_model = model[:, 1], model[:, 2], model[:, 4]
             # Get leastsq
@@ -382,8 +596,9 @@ class orbifitter():
                 # array of deviations for all vv
                 velocity_squar = (vrr - vR_model) ** 2 + (vtt - vT_model) ** 2 + (vzz - vz_model) ** 2
                 total_square = spatial_square + velocity_squar
-                leastsq += probability*np.min(total_square)
+                leastsq += probability * np.min(total_square)
             return leastsq
+
         # Generate least-square list
         least_list = np.empty(len(the_models), dtype=types.float32)
         for i in range(len(the_models)):
@@ -408,6 +623,7 @@ class orbifitter():
                 velocity_squar = (vrr - vR_model) ** 2 + (vtt - vT_model) ** 2 + (vzz - vz_model) ** 2
                 leastsq += np.min(velocity_squar)
             return leastsq
+
         # Generate least-square list
         least_list = np.empty(len(the_models), dtype=types.float32)
         for i in range(len(the_models)):
@@ -423,24 +639,26 @@ class orbifitter():
         # Define within, since you can't use external (but we want fastmath.) R, vR, vT, z, vz, phi
         def least_squares(data, model):
             # Rtan(latitude) = z
-            latitude = np.arctan(data[:,3]/data[:,0])
-            model_latitude = np.arctan(model[:,3]/model[:,0])
-            phis = data[:,5]
-            model_phi = model[:,5]
+            latitude = np.arctan(data[:, 3] / data[:, 0])
+            model_latitude = np.arctan(model[:, 3] / model[:, 0])
+            phis = data[:, 5]
+            model_phi = model[:, 5]
             # Convert latitude to spherical polar
-            thetas = np.pi/2 - latitude
-            model_theta = np.pi/2 - model_latitude
+            thetas = np.pi / 2 - latitude
+            model_theta = np.pi / 2 - model_latitude
             # Generate spherical unit vectors
             model_univects = np.empty((len(model_latitude), 3))
-            model_univects[:,0], model_univects[:,1], model_univects[:,2] = np.cos(model_phi) * np.sin(model_theta), np.sin(model_phi) * np.sin(model_theta), np.cos(model_theta)
+            model_univects[:, 0], model_univects[:, 1], model_univects[:, 2] = np.cos(model_phi) * np.sin(
+                model_theta), np.sin(model_phi) * np.sin(model_theta), np.cos(model_theta)
             # Get least-sq
             leastsq = 0
             for theta, phi in zip(thetas, phis):
-                x,y,z = np.cos(phi)*np.sin(theta), np.sin(phi)*np.sin(theta), np.cos(theta)
-                x_dev,y_dev,z_dev = x-model_univects[:,0], y-model_univects[:,1], z-model_univects[:,2]
-                deviation = x_dev**2 + y_dev**2 + z_dev**2
+                x, y, z = np.cos(phi) * np.sin(theta), np.sin(phi) * np.sin(theta), np.cos(theta)
+                x_dev, y_dev, z_dev = x - model_univects[:, 0], y - model_univects[:, 1], z - model_univects[:, 2]
+                deviation = x_dev ** 2 + y_dev ** 2 + z_dev ** 2
                 leastsq += np.min(deviation)
             return leastsq
+
         # Generate least-square list
         least_list = np.empty(len(the_models), dtype=types.float32)
         for i in range(len(the_models)):
@@ -524,7 +742,8 @@ class orbifitter():
         if extra_text == None:
             savedir = windows_directories.imgdir + "\\" + "orbit_fitting_variables_guess" + "\\" + str(clust_to_fit)
         else:
-            savedir = windows_directories.imgdir + "\\" + "orbit_fitting_variables_guess" + "\\" + str(clust_to_fit) + "_" + extra_text
+            savedir = windows_directories.imgdir + "\\" + "orbit_fitting_variables_guess" + "\\" + str(
+                clust_to_fit) + "_" + extra_text
 
         try:
             os.mkdir(savedir)
@@ -590,14 +809,15 @@ class orbifitter():
             if try_load == True:
                 with open(
                         windows_directories.orbitsdir + "\\" + (
-                        "preliminary_fit_cluster_{0:.0f}_with_{1:.0f}_MCdraws_{2:.0f}_timesteps").format(clust_to_fit,
-                                                                                                         iterations,
-                                                                                                         number_of_steps) + ".txt",
+                                "preliminary_fit_cluster_{0:.0f}_with_{1:.0f}_MCdraws_{2:.0f}_timesteps").format(
+                            clust_to_fit,
+                            iterations,
+                            number_of_steps) + ".txt",
                         'rb') as f:
                     orbit_list = pickle.load(file=f)
                 with open(
                         windows_directories.orbitsdir + "\\" + (
-                        "preliminary_fit_cluster_{0:.0f}_with_{1:.0f}_MCdraws_elements_{2:.0f}_timesteps").format(
+                                "preliminary_fit_cluster_{0:.0f}_with_{1:.0f}_MCdraws_elements_{2:.0f}_timesteps").format(
                             clust_to_fit, iterations, number_of_steps)
                                 .format(clust_to_fit, iterations) + ".txt", 'rb') as f:
                     orbit_elements = pickle.load(file=f)
@@ -677,9 +897,10 @@ class orbifitter():
             if try_save == True:
                 try:
                     with open(windows_directories.orbitsdir + "\\" + (
-                    "preliminary_fit_cluster_{0:.0f}_with_{1:.0f}_MCdraws_{2:.0f}_timesteps").format(clust_to_fit,
-                                                                                                     iterations,
-                                                                                                     number_of_steps) + ".txt",
+                            "preliminary_fit_cluster_{0:.0f}_with_{1:.0f}_MCdraws_{2:.0f}_timesteps").format(
+                        clust_to_fit,
+                        iterations,
+                        number_of_steps) + ".txt",
                               'wb') as f:
                         pickle.dump(obj=orbit_list, file=f)
                 except:
@@ -688,9 +909,10 @@ class orbifitter():
                 # Also try to save the orbital elements we've generated.
                 try:
                     with open(windows_directories.orbitsdir + "\\" + (
-                    "preliminary_fit_cluster_{0:.0f}_with_{1:.0f}_MCdraws_elements_{2:.0f}_timesteps").format(clust_to_fit,
-                                                                                                              iterations,
-                                                                                                              number_of_steps) + ".txt",
+                            "preliminary_fit_cluster_{0:.0f}_with_{1:.0f}_MCdraws_elements_{2:.0f}_timesteps").format(
+                        clust_to_fit,
+                        iterations,
+                        number_of_steps) + ".txt",
                               'wb') as f:
                         pickle.dump(obj=orbit_elements, file=f)
                 except:
@@ -792,6 +1014,7 @@ class orbifitter():
     - profit.
     - Needs membership table.
     """
+
     def galpy_final_fitting(self,
                             table,
                             clust_to_fit,
@@ -890,8 +1113,9 @@ class orbifitter():
                                              solarmotion=solarmotion,
                                              lb=True)
             if try_save == True:
-                with open(windows_directories.datadir + "\\" + "clustered" + "\\" + str(clust_to_fit) + ".orbit_fit.txt",
-                          'wb') as f:
+                with open(
+                        windows_directories.datadir + "\\" + "clustered" + "\\" + str(clust_to_fit) + ".orbit_fit.txt",
+                        'wb') as f:
                     pickle.dump(obj=fit, file=f)
         else:
             # Load the fit
@@ -1060,6 +1284,7 @@ class orbifitter():
     - Doesn't need membership table.
     - Fairly deprecated but whatever. 
     """
+
     def galpy_fitting_nomemb(self,
                              table,
                              clustering,
@@ -1083,6 +1308,7 @@ class orbifitter():
         :param graph: Should I produce graphing? Default False.
         :param load_fit: Should I load a previous fit? Default False.
         :param try_save: Should I try saving the fit?
+        :param: extra_text: Some extra text to distinguish in saves.
         :return: The orbit fit
         """
 
@@ -1094,7 +1320,7 @@ class orbifitter():
                                                                                     number_of_steps,
                                                                                     clustering=clustering,
                                                                                     try_load=try_load,
-                                                                                    graph=graph,
+                                                                                    graph=False,
                                                                                     try_save=True,
                                                                                     extra_text=extra_text)
 
@@ -1156,12 +1382,14 @@ class orbifitter():
                                              solarmotion=solarmotion,
                                              lb=True)
             if try_save == True:
-                with open(windows_directories.datadir + "\\" + "clustered" + "\\" + str(clust_to_fit) + "_maindata_galpy.orbit_fit.txt",
+                with open(windows_directories.datadir + "\\" + "clustered" + "\\" + str(
+                        clust_to_fit) + "_maindata_galpy.orbit_fit.txt",
                           'wb') as f:
                     pickle.dump(obj=fit, file=f)
         else:
             # Load the fit
-            with open(windows_directories.datadir + "\\" + "clustered" + "\\" + str(clust_to_fit) + "_maindata_galpy.orbit_fit.txt",
+            with open(windows_directories.datadir + "\\" + "clustered" + "\\" + str(
+                    clust_to_fit) + "_maindata_galpy.orbit_fit.txt",
                       'rb') as f:
                 fit = pickle.load(file=f)
 
@@ -1210,7 +1438,12 @@ class orbifitter():
                 os.mkdir(windows_directories.imgdir + "\\" + "orbit_fitting_variables_maindata")
             except:
                 pass
-            savedir = windows_directories.imgdir + "\\" + "orbit_fitting_variables_maindata" + "\\" + str(clust_to_fit)
+            if extra_text == None:
+                savedir = windows_directories.imgdir + "\\" + "orbit_fitting_variables_maindata" + "\\" + str(
+                    clust_to_fit)
+            else:
+                savedir = windows_directories.imgdir + "\\" + "orbit_fitting_variables_maindata" + "\\" + str(
+                    clust_to_fit) + "_" + extra_text
             try:
                 os.mkdir(savedir)
             except:
@@ -1229,22 +1462,22 @@ class orbifitter():
         orbigist = orbigistics()
 
         # Lists
-        ees, periggs = [],[]
+        ees, periggs = [], []
         EEs = []
         Lzs = []
+        apoggs = []
 
         # For the orbits, integrate them
         for orbit in orbits:
-
             # Set up a copy for the forward and the backward
             forward = copy.deepcopy(orbit)
             backward = copy.deepcopy(orbit)
 
             # Do integrals and append these orbit objects to lists
-            forward.integrate(t=np.linspace(0, integration_time, number_of_steps)*u.yr,
+            forward.integrate(t=np.linspace(0, integration_time, number_of_steps) * u.yr,
                               pot=orbigist.pot,
                               method=method)
-            backward.integrate(t=-1*np.linspace(0, integration_time, number_of_steps)*u.yr,
+            backward.integrate(t=-1 * np.linspace(0, integration_time, number_of_steps) * u.yr,
                                pot=orbigist.pot,
                                method=method)
 
@@ -1253,25 +1486,32 @@ class orbifitter():
             ees.append(e)
 
             # Get the radii involved
-            for_R, back_R = np.array([forward.R(t).to(u.kpc).value for t in np.linspace(0, integration_time, number_of_steps)*u.yr]),\
-                            np.array([backward.R(t).to(u.kpc).value for t in -1*np.linspace(0, integration_time, number_of_steps)*u.yr])
-            for_z, back_z = np.array([forward.z(t).to(u.kpc).value for t in np.linspace(0, integration_time, number_of_steps)*u.yr]),\
-                            np.array([backward.z(t).to(u.kpc).value for t in -1*np.linspace(0, integration_time, number_of_steps)*u.yr])
+            for_R, back_R = np.array(
+                [forward.R(t).to(u.kpc).value for t in np.linspace(0, integration_time, number_of_steps) * u.yr]), \
+                            np.array([backward.R(t).to(u.kpc).value for t in
+                                      -1 * np.linspace(0, integration_time, number_of_steps) * u.yr])
+            for_z, back_z = np.array(
+                [forward.z(t).to(u.kpc).value for t in np.linspace(0, integration_time, number_of_steps) * u.yr]), \
+                            np.array([backward.z(t).to(u.kpc).value for t in
+                                      -1 * np.linspace(0, integration_time, number_of_steps) * u.yr])
 
             # Concatenate
             R_concat = np.concatenate([for_R, back_R])
             z_concat = np.concatenate([for_z, back_z])
 
             # Get the radius
-            r = np.sqrt(R_concat**2 + z_concat**2)
+            r = np.sqrt(R_concat ** 2 + z_concat ** 2)
 
             # Grab pergalacticons/closest approaches.
             perigalacticon = np.min(r)
             periggs.append(perigalacticon)
+            apogalacticon = np.max(r)
+            apoggs.append(apogalacticon)
 
             # Also evaluate the energy (conserved after all) and angular momentum in Z
-            E, Lz = orbit.E(0*u.yr, orbigist.pot, orbigist.rovo[1]*u.km/u.s), orbit.Lz(0*u.yr, orbigist.rovo[0],
-                                                                                       orbigist.rovo[1])
+            E, Lz = forward.E(0 * u.yr, orbigist.pot, orbigist.rovo[1] * u.km / u.s), forward.Lz(0 * u.yr,
+                                                                                                 orbigist.rovo[0],
+                                                                                                 orbigist.rovo[1])
             EEs.append(E.value)
             Lzs.append(Lz.value)
 
@@ -1280,6 +1520,684 @@ class orbifitter():
         meanpg, stdpg = np.mean(periggs), np.std(periggs)
         meanEE, stdEE = np.mean(EEs), np.std(EEs)
         meanLz, stdLz = np.mean(Lzs), np.std(Lzs)
+        meanapog, stdapog = np.mean(apoggs), np.std(apoggs)
 
         # Create basic plots
-        return ees, meanee, stdee, periggs, meanpg, stdpg, EEs, meanEE, stdEE, Lzs, meanLz, stdLz
+        return ees, meanee, stdee, \
+               periggs, meanpg, stdpg, \
+               EEs, meanEE, stdEE, \
+               Lzs, meanLz, stdLz, \
+               apoggs, meanapog, stdapog
+
+
+# PDF Class for Spatial Data.
+class spatial_pdf(object):
+    def __init__(self, x, y, z, shortaxis_bins, padbins, gauss_kernel_width):
+
+        """
+        :param x: Data in x
+        :param y: Data in y
+        :param z: Data in z
+        :param shortaxis_bins: Number of bins (sub padding) on minimum axis
+        :param padbins: Padding bins on edges
+        :param gauss_kernel_width: Gauss STDEV in number of bins
+        """
+
+        # Get min/max of each axis
+        minmax_x, minmax_y, minmax_z = np.array([np.min(x), np.max(x)]), \
+                                       np.array([np.min(y), np.max(y)]), \
+                                       np.array([np.min(z), np.max(z)])
+        minmax = np.array([minmax_x, minmax_y, minmax_z])
+        scales = np.array([d[1] - d[0] for d in minmax])
+
+        # Find minimum size
+        minmin = np.min(scales)
+        binsize = minmin / shortaxis_bins
+
+        # Set up number of bins and save
+        nbins = scales / binsize  # get number of bins per axis with this binsize
+        nbins = np.rint(nbins, out=np.zeros(3, int), casting='unsafe')  # round this up
+        nbins += int(2 * padbins)  # add some padding to the axis on each side (hence 2*padbins)
+        self.nbins = nbins
+
+        # Set up the range for the bins
+        x_bins, \
+        y_bins, \
+        z_bins = np.linspace(minmax[0][0] - padbins * binsize, minmax[0][1] + padbins * binsize, nbins[0] + 1), \
+                 np.linspace(minmax[1][0] - padbins * binsize, minmax[1][1] + padbins * binsize, nbins[1] + 1), \
+                 np.linspace(minmax[2][0] - padbins * binsize, minmax[2][1] + padbins * binsize, nbins[2] + 1)
+
+        # Note that due to rounding, the binsizes might be slightly different- they're close, that's what counts
+        bins = np.array([x_bins, y_bins, z_bins], dtype=object)
+        self.binedges = bins
+
+        # Calculate new binsizes (due to rounding/etc) and save
+        binsizes = np.array([d[1] - d[0] for d in bins])
+        self.binvolume = np.prod(binsizes)
+        self.binsizes = binsizes
+        self.padminmaxes = np.array([[minmax[0][0] - padbins * binsize, minmax[0][1] + padbins * binsize],
+                                     [minmax[1][0] - padbins * binsize, minmax[1][1] + padbins * binsize],
+                                     [minmax[2][0] - padbins * binsize, minmax[2][1] + padbins * binsize]])
+        self.padmins = np.array([d[0] for d in self.padminmaxes])
+
+        # Set up vectors
+        vecs = np.array([x, y, z]).T
+        # Set up grid and do the histogram
+        H, edges = np.histogramdd(vecs, bins=bins, density=False)
+
+        # Specify empty gaussian. Make sure it's bigger than the largest binsize.
+        kernel_width = gauss_kernel_width  # in number of cells
+        gauss_array = np.zeros_like(H)
+        gaussi, gaussj, gaussk = np.shape(gauss_array)
+        midi, midj, midk = int((gaussi + 1) / 2), int((gaussj + 1) / 2), int((gaussk + 1) / 2)
+        # Craft the gaussian! Unnormalized.
+        gauss = lambda ii, jj, kk: np.exp(
+            (-1 / (2 * (kernel_width ** 2))) * ((ii - midi) ** 2 + (jj - midj) ** 2 + (kk - midk) ** 2))
+        for i in range(gaussi):
+            for j in range(gaussj):
+                for k in range(gaussk):
+                    gauss_array[i, j, k] = gauss(i, j, k)
+        gauss_array /= np.sum(gauss_array)
+        self.gaussian = gauss_array
+
+        # Convolve histogram with kernel
+        H_conv = convolve(H, gauss_array, mode='same')
+
+        # Normalize (now gives total probability per bin)
+        H_conv /= np.sum(H_conv)
+
+        # Divide the probability-per-bin array by the volume of each cell (so as to get a spatial PDF)
+        H_conv /= np.prod(binsizes)
+
+        # Save PDFws
+        self.bin_pdf = H_conv
+
+    @staticmethod
+    @njit()
+    def findices(xx, yy, zz, padmins, binsizes):
+        i = int((xx - padmins[0]) / binsizes[0])
+        j = int((yy - padmins[1]) / binsizes[1])
+        k = int((zz - padmins[2]) / binsizes[2])
+        return i, j, k
+
+    # Get the array indices for a given (xx,yy,zz)
+    def indices(self, xx, yy, zz):
+        return self.findices(xx, yy, zz, self.padmins, self.binsizes)
+
+    @staticmethod
+    @njit()
+    def fcoords(i, j, k, padmins, binsizes):
+        return padmins + np.array([i, j, k]) * binsizes
+
+    # Get the position for a given (i,j,k)
+    def coords(self, i, j, k):
+        return self.fcoords(i, j, k, self.padmins, self.binsizes)
+
+    # Get the PDF for a given x,y,z you provide, via just returning the value inside that grid element (basic)
+    def grid_pdf(self, xx, yy, zz):
+        """
+        :param xx: x
+        :param yy: y
+        :param zz: z
+        :return: p(x,y,z)
+        """
+        i, j, k = self.indices(xx, yy, zz)
+        return self.bin_pdf[i, j, k]
+
+    # Plot CDF along axes
+    def cdf(self, savepath=None):
+        """
+        :param savepath: Path (including .png) to save the marginalized PDFs along xy-yz-zx
+        :return:
+        """
+
+        # Generate fig/axs/etc
+        fig, axs = plt.subplots(nrows=1, ncols=3, figsize=(15, 7), constrained_layout=True)
+        plt.subplots_adjust(wspace=0.1, hspace=0)
+
+        for num, ax in enumerate(axs):
+            ax.grid(True, which='major', alpha=0, linestyle='dotted')  # Enable grids on subplot
+            ax.grid(True, which='minor', alpha=0, linestyle='dotted')
+            ax.set(aspect="equal")
+            ax.tick_params(axis="x", which="both", direction="in", length=4, bottom=True, left=True, right=True,
+                           top=True)
+            ax.tick_params(axis="y", which="both", direction="in", length=4, bottom=True, left=True, right=True,
+                           top=True)
+
+        cdf_xy, cdf_yz, cdf_zx = np.sum(self.bin_pdf, axis=2), \
+                                 np.sum(self.bin_pdf, axis=0), \
+                                 np.sum(self.bin_pdf, axis=1)
+        axs[0].imshow(cdf_xy)
+        axs[1].imshow(cdf_yz)
+        axs[2].imshow(cdf_zx)
+
+        axs[0].set(xlabel='x',
+                   ylabel='y')
+        axs[1].set(xlabel='y',
+                   ylabel='z')
+        axs[2].set(xlabel='z',
+                   ylabel='x')
+
+        if savepath != None:
+            plt.savefig(savepath, dpi=300)
+        plt.show()
+
+
+# Class for entropy minimization method (single-component spatially/energistically isolated clusters.)
+class entro_fitter():
+
+    def __init__(self, x, y, z, vx, vy, vz,
+                 M_d_range, M_nfw_range, c_nfw_range,
+                 default_params,
+                 n_monte,
+                 pad, enpoints):
+
+        # Define rng
+        self.rng = np.random.default_rng()
+
+        """
+
+        Entropy-minimization routine fuelled by Monte-Carlo guesswork. Grid-search functionality is deprecated, but
+        may be re-enabled by un-hashing in __init__. See Jorge's paper on Entropy-minimization for the tl;dr of this
+        method, or my MSc thesis.
+
+        :param x: array of data arrays for each stream, i.e. array([[x11,x12,x13...],[x21,x22,x23...],...])
+        :param y: ^
+        :param z: ^
+        :param vx: ^
+        :param vy: ^
+        :param vz: ^
+        :param M_d_range: range over which to monte array([min,max])
+        :param M_nfw_range: ^
+        :param c_nfw_range: ^
+        :param default_params: array([M_b, a_b, M_d, a_d, b_d, M_nfw, a_nfw, c_nfw]) defaults
+        :param n_monte: number of points to generate
+
+        """
+
+        # Keep track of the "default model." default_params should be the same shape as input for E_c.
+        # i.e: M_b, a_b, M_d, a_d, b_d, M_nfw, a_nfw, c_nfw
+        self.defpar = default_params
+
+        # Set self-data and ranges
+        self.x, self.y, self.z, \
+        self.vx, self.vy, self.vz, \
+        self.ranges, self.n_monte = x,y,z,\
+                                    vx,vy,vz,\
+                                    np.array([M_d_range,
+                                              M_nfw_range,
+                                              c_nfw_range]), \
+                                    n_monte
+
+        # Set padding
+        self.pad, self.enpoints = pad, enpoints
+
+        # Set energistics
+        self.fast = fast_energistics()
+
+        # For the now-unused/deprecated grid functionality (unsuitable for lots of local minima.)
+        # Note that in the grid method, we only dealt with one stream at once.
+        """
+                 x, y, z, vx, vy, vz
+                 M_d_range, M_nfw_range, c_nfw_range,
+                 Mdbins, Mnfwbins, Cnfwbins, monte_per_bin, max_iter, monte_frac, enpoints, pad):
+
+        # Keep track of the "default model"
+        self.default_model = np.array([M_d, M_nfw, c_nfw])
+
+        # Define RNG
+        self.rng = np.random.default_rng()
+
+        # Set up the linspaces for each axis
+        md_, mnfw_, cnfw_ = np.linspace(M_d_range[0], M_d_range[1], Mdbins),\
+                            np.linspace(M_nfw_range[0], M_nfw_range[1], Mnfwbins),\
+                            np.linspace(c_nfw_range[0], c_nfw_range[1], Cnfwbins)
+
+        # Save md_/mnfw_/cnfw_ for plotting purposes
+        self.md_, self.mnfw_, self.cnfw_ = md_, mnfw_, cnfw_
+
+        # Generate the grid
+        md, mnfw, cnfw = np.meshgrid(md_, mnfw_, cnfw_, indexing='ij')
+        self.coarse_grid = np.array([md, mnfw, cnfw], dtype=object)
+
+        # Save the number of bins, their limits, and sizes
+        self.coarse_nbins = np.array([Mdbins, Mnfwbins, Cnfwbins], dtype=object)
+        mdx, mdnfwx, cnfwx = md_[1] - md_[0], \
+                             mnfw_[1] - mnfw_[0], \
+                             cnfw_[1] - cnfw_[0]
+        self.coarse_size = np.array([mdx, mdnfwx, cnfwx])
+        self.lims = np.array([M_d_range, M_nfw_range, c_nfw_range])
+
+        # Define the number of new monte to generate from each bin point, the max iterations, and percent
+        self.monte_pb, self.max_iter, self.monte_frac = monte_per_bin, max_iter, monte_frac
+
+        # Specify the number of points to estimate for entropy integral, alongside padding on the integral range
+        self.enpoints = enpoints # Number of points to integrate KDE over
+        self.pad = pad # As a fraction of the energy domain- added to each side for integration in KDE
+
+        # Define the energy module
+        self.fast = fast_energistics()
+
+        # Save the data for use
+        self.x, self.y, self.z, self.vx, self.vy, self.vz = x,y,z,vx,vy,vz """
+
+    # Integral for entropy (provide energy and pdf.)
+    @staticmethod
+    @njit(fastmath=True)
+    def entropy(ens, pdfs):
+        return -1 * np.trapz(pdfs * np.log(pdfs), ens)
+
+    # Calculate the entropy for data, given the three parameters M_d, M_nfw, c_nfw: sum over the datasets.
+    def point_entropy(self, M_d, M_nfw, c_nfw):
+
+        # Get the energy distribution for each set of data
+        stream_entropysum = 0
+        for xx,yy,zz,vvx,vvy,vvz in zip(self.x, self.y, self.z, self.vx, self.vy, self.vz):
+            E = self.fast.E_c(xx, yy, zz,
+                              vvx, vvy, vvz,
+                              *self.defpar[0:2],
+                              M_d, *self.defpar[3:5],
+                              M_nfw, self.defpar[6], c_nfw)
+
+            # Fit a gaussian KDE to this
+            kde = gaussian_kde(E)
+
+            # Generate points within the data energy range
+            E_range = np.max(E) - np.min(E)
+            ens = np.linspace(np.min(E) - self.pad * E_range, np.max(E) + self.pad * E_range, self.enpoints)
+            pdfs = kde.evaluate(ens)
+            entropy = self.entropy(ens, pdfs)
+            stream_entropysum += entropy
+
+        return stream_entropysum
+
+    # Generate entropies for a list of vectors
+    def list_entropy(self, points):
+        return [self.point_entropy(*point) for point in points]
+
+    # Select the lowest "x" relative percent on a list, instead of a grid
+    @staticmethod
+    @njit(fastmath=True)
+    def lowest_monte_pc_list(vecs, entropies):
+
+        # Array Up
+        entropies = np.array(entropies)
+
+        # Selection Fraction
+        select_frac = 0.1
+
+        # Assuage range
+        min, max = np.min(entropies), np.max(entropies)
+        range = max - min
+
+        # Get fractional distances relative to range and min
+        entrofracs = (entropies - min) / range
+
+        # New vecs
+        new_vecs, new_entropies = [], []
+
+        # Get args where percent difference to min is lowest 10%
+        for num, entrofrac in enumerate(entrofracs):
+            if entrofrac < select_frac:
+                new_vecs.append(vecs[num]), new_entropies.append(entropies[num])
+
+        return new_vecs, new_entropies
+
+    # Select the lowest "X" elements, instead of "relative percent"
+    @staticmethod
+    @njit(fastmath=True)
+    def lowest_monte_X_list(select_no, vecs, entropies):
+
+        # Grab indices
+        indices = np.arange(0, len(entropies))
+
+        # Sort the list
+        sorted_indices = np.array([x for _, x in sorted(zip(entropies, indices))])[0:select_no]
+
+        # Index
+        new_vecs, new_entropies = [], []
+        for i in sorted_indices:
+            new_vecs.append(vecs[i]), new_entropies.append(entropies[i])
+
+        # Grab the best "select_no" and return
+        return new_vecs, new_entropies
+
+    # Generate points for the range
+    def genpoints(self):
+        return np.array([self.rng.uniform(self.ranges[0][0], self.ranges[0][1], self.n_monte),
+                         self.rng.uniform(self.ranges[1][0], self.ranges[1][1], self.n_monte),
+                         self.rng.uniform(self.ranges[2][0], self.ranges[2][1], self.n_monte)]).T
+
+    """
+    # Do the point_entropy over the coarse_grid, and generate self.entgrid. Deprecated (see: __init__ to retrieve.)
+    def coarse_entropy(self, print_fit=False, savepath=False):
+
+        # Entropy grid placeholder
+        entgrid = np.empty_like(self.coarse_grid[0])
+
+        # Go over each point on the grid
+        for i in range(self.coarse_nbins[0]):
+            for j in range(self.coarse_nbins[1]):
+                for k in range(self.coarse_nbins[2]):
+                    # Grab parameters
+                    M_d, M_nfw, c_nfw = self.coarse_grid[0][i, j, k], \
+                                        self.coarse_grid[1][i, j, k], \
+                                        self.coarse_grid[2][i, j, k]
+
+                    # Set the entropy in the grid
+                    entgrid[i, j, k] = self.point_entropy(M_d, M_nfw, c_nfw)
+
+        if print_fit == True:
+
+            # Get the best-fit point
+            ib, jb, kb = np.unravel_index(entgrid.argmin(), entgrid.shape)
+            print("Coarse Grid best fitting parameters are ",
+                  self.coarse_grid[0][ib, jb, kb],
+                  self.coarse_grid[1][ib, jb, kb],
+                  self.coarse_grid[2][ib, jb, kb],
+                  " With an entropy of ",
+                  entgrid[ib, jb, kb])
+
+            # Produce some plots about this area
+            M_d, M_nfw, c_nfw = self.default_model
+            fig, axs = plt.subplots(nrows=1, ncols=1)
+            plt.subplots_adjust(wspace=0.1, hspace=0.1)
+            axs.plot(self.md_ / M_d, entgrid[:, jb, kb], color='red')
+            axs.plot(self.mnfw_ / M_nfw, entgrid[ib, :, kb], color='green')
+            axs.plot(self.cnfw_ / c_nfw, entgrid[ib, jb, :], color='blue')
+            legend_elements = [Patch(edgecolor='black', facecolor='red', label=r'$\textrm{M}_\textrm{d}$'),
+                               Patch(edgecolor='black', color='green', label=r'$\textrm{M}_\textrm{nfw}$'),
+                               Patch(edgecolor='black', facecolor='blue', label=r'$\textrm{c}_\textrm{nfw}$')]
+            plt.legend(handles=legend_elements, loc='upper right')
+            axs.set(xlabel="Ratio to default potential")
+            axs.set(ylabel="Entropy")
+            axs.grid(which='major', color='pink')
+
+            if savepath != False:
+                plt.savefig(savepath)
+                plt.show()
+
+        return entgrid
+    # Create one "searcher" at point [md, mnfw, cnfw] and let it run, returning the best-fitting point satisfying our needs.
+    # This one is MC-based.
+    """
+    #Start at point x,y,z
+    #Generate monte_pb new normal vectors in the grid (spherical)
+    #Scale vectors by binsizes to make sure the search is fair in each axis
+    #For each new point generated, make sure that it lies within the grid
+    #For each point that remains, now generate the entropy
+    #If the new entropy differs from the other one by at least monte_percent, negatively (i.e. lower), keep it
+    #Return all these new points, and their entropies.
+    """
+    # Calculate the entropy for data, given the three parameters M_d, M_nfw, c_nfw
+    def point_entropy(self, M_d, M_nfw, c_nfw):
+
+        # Get the energy distribution
+        E = self.fast.E_c(self.x, self.y, self.z,
+                          self.vx, self.vy, self.vz,
+                          M_b, a_b,
+                          M_d, a_d, b_d,
+                          M_nfw, a_nfw, c_nfw)
+
+        # Fit a gaussian KDE to this
+        kde = gaussian_kde(E)
+
+        # Generate points within the data energy range
+        E_range = np.max(E) - np.min(E)
+        ens = np.linspace(np.min(E) - self.pad * E_range, np.max(E) + self.pad * E_range, self.enpoints)
+        pdfs = kde.evaluate(ens)
+        entropy = self.entropy(ens, pdfs)
+
+        return entropy
+    def search(self, md, mnfw, cnfw):
+
+        # Specify initial vector
+        vec = np.array([md, mnfw, cnfw])
+
+        # Craft change vectors about origin and scale them to binsize
+        dvecs = self.rng.normal(0, 1, (self.monte_pb, 3))
+        dvecs = np.array([d / np.linalg.norm(d) for d in dvecs])
+        dvecs[:, 0] *= self.coarse_size[0]
+        dvecs[:, 1] *= self.coarse_size[1]
+        dvecs[:, 2] *= self.coarse_size[2]
+        dvecs *= 1
+
+        # Craft new points
+        new_vecs = vec + dvecs
+        retain = np.zeros(self.monte_pb, dtype=bool)
+
+        # For each new point, verify it's within the grid (and dump those that aren't- this is a boundary condition.)
+        for num, new_vec in enumerate(new_vecs):
+            if self.lims[0][0] < new_vec[0] < self.lims[0][1] \
+                    and self.lims[1][0] < new_vec[1] < self.lims[1][1] \
+                    and self.lims[2][0] < new_vec[2] < self.lims[2][1]:
+                retain[num] = True
+
+        # Clip
+        new_vecs = new_vecs[retain]
+        entropies = []
+
+        # Generate entropies for each point
+        for new_vec in new_vecs:
+            # Get the energy distribution
+            E = self.fast.E_c(self.x, self.y, self.z,
+                              self.vx, self.vy, self.vz,
+                              M_b, a_b,
+                              new_vec[0], a_d, b_d,
+                              new_vec[1], a_nfw, new_vec[2])
+
+            # Fit a gaussian KDE to this
+            kde = gaussian_kde(E)
+
+            # Use PDF from KDE over energy range (with padding) and evaluate entropy for this point
+            E_range = np.max(E) - np.min(E)
+            ens = np.linspace(np.min(E) - self.pad * E_range, np.max(E) + self.pad * E_range, self.enpoints)
+            pdfs = kde.evaluate(ens)
+            entropy = self.entropy(ens, pdfs)
+            entropies.append(entropy)
+
+        # Return these points and their entropies
+        return new_vecs, entropies
+    # Search, but with "fining up" the grid, instead. Generates new points at distances in powers of 3 (you'll see.
+    def gridfine_search(self, divfrac, md, mnfw, cnfw):
+
+        # Specify initial vector
+        vec = np.array([md, mnfw, cnfw])
+
+        # Craft change vectors about origin and scale them to binsize
+        # Eight vertices about the original one.
+        dvecs = np.array([[-1, -1, -1],
+                          [-1, 1, -1],
+                          [-1, -1, 1],
+                          [-1, 1, 1],
+                          [1, 1, -1],
+                          [1, -1, -1],
+                          [1, 1, 1],
+                          [1, -1, 1]], dtype=float)
+        dvecs /= np.sqrt(3)  # normalize them
+        dvecs[:, 0] *= self.coarse_size[0]  # scale to binsize
+        dvecs[:, 1] *= self.coarse_size[1]  # scale to binsize
+        dvecs[:, 2] *= self.coarse_size[2]  # scale to binsize
+        dvecs /= (divfrac)  # divide by the power. Iter "0" pythonically should be power of 1.
+
+        # Craft new points
+        new_vecs = vec + dvecs
+        retain = np.zeros(8, dtype=bool)
+
+        # For each new point, verify it's within the grid (and dump those that aren't- this is a boundary condition.)
+        for num, new_vec in enumerate(new_vecs):
+            if self.lims[0][0] < new_vec[0] < self.lims[0][1] \
+                    and self.lims[1][0] < new_vec[1] < self.lims[1][1] \
+                    and self.lims[2][0] < new_vec[2] < self.lims[2][1]:
+                retain[num] = True
+
+        # Clip
+        new_vecs = new_vecs[retain]
+        entropies = []
+
+        # Generate entropies for each point
+        for new_vec in new_vecs:
+            # Get the energy distribution
+            E = self.fast.E_c(self.x, self.y, self.z,
+                              self.vx, self.vy, self.vz,
+                              M_b, a_b,
+                              new_vec[0], a_d, b_d,
+                              new_vec[1], a_nfw, new_vec[2])
+
+            # Fit a gaussian KDE to this
+            kde = gaussian_kde(E)
+
+            # Use PDF from KDE over energy range (with padding) and evaluate entropy for this point
+            E_range = np.max(E) - np.min(E)
+            ens = np.linspace(np.min(E) - self.pad * E_range, np.max(E) + self.pad * E_range, self.enpoints)
+            pdfs = kde.evaluate(ens)
+            entropy = self.entropy(ens, pdfs)
+            entropies.append(entropy)
+
+        # Return these points and their entropies
+        return new_vecs, entropies
+    # Get the best "x" relative percent on the grid and returns the vecs for this (M_d, M_nfw, c_nfw)
+    def lowest_monte_pc(self, entgrid):
+
+        # Selection Fraction
+        select_frac = 0.5
+
+        # Get the best point (minimum of grid) and worst point (maximum of grid)
+        ib, jb, kb = np.unravel_index(entgrid.argmin(), entgrid.shape)
+        iw, jw, kw = np.unravel_index(entgrid.argmax(), entgrid.shape)
+
+        # Get the entropy range for the grid
+        entdomain = entgrid[iw, jw, kw] - entgrid[ib, jb, kb]
+
+        # Get the relative percentages distance from the minimum, relative to the range possible
+        percent_grid = (entgrid * (1 + 1e-12) - entgrid[ib, jb, kb]) / entdomain
+
+        # Select the best elements (only keep the best 10% of them, relative to the grid domain)
+        vecs = []
+        entropies = []
+        for i in range(self.coarse_nbins[0]):
+            for j in range(self.coarse_nbins[1]):
+                for k in range(self.coarse_nbins[2]):
+                    if percent_grid[i, j, k] <= select_frac:
+                        vecs.append(np.array([self.coarse_grid[0][i, j, k],
+                                              self.coarse_grid[1][i, j, k],
+                                              self.coarse_grid[2][i, j, k]]))
+                        entropies.append(entgrid[i, j, k])
+
+        return vecs, entropies, ib, jb, kb
+    # Run Entropy-Minimization following the framework outlined in the grid-search method. Deprecated.
+    def run_grid(self, print_it=False):
+
+        # Set up the entropy grid from the coarse grid
+        entgrid = self.coarse_entropy(True, windows_directories.imgdir + "\\orphan_entropy_test.png")
+        entgrid = self.coarse_entropy()
+
+        # Grab the starting points from the grid
+        vecs, entropies, ib, jb, kb = self.lowest_monte_pc(entgrid)
+
+        # Placeholder for best fit
+        best_vec = np.array([self.coarse_grid[0][ib, jb, kb],
+                             self.coarse_grid[1][ib, jb, kb],
+                             self.coarse_grid[2][ib, jb, kb]])
+        best_entropy = False
+
+        # Run until max_iter is reached, or until convergence is had numerically.
+        for i in range(self.max_iter):
+
+            # Define current best entropy
+            prevmin = np.min(entropies)
+
+            # Track of new points
+            new_vecs, new_entropies = [], []
+
+            # Search for each point
+            for vec, entropy in zip(vecs, entropies):
+                # Run search and append
+                nvs, nes = self.search(*vec)  # self.gridfine_search(1.1**i, *vec)
+                # nvs, nes = self.gridfine_search(1.1**(i), *vec)
+                # Verify that the new points are improvements
+                for nes_i in range(len(nes)):
+                    if nes[nes_i] < prevmin:
+                        new_vecs.append(nvs[nes_i])
+                        new_entropies.append(nes[nes_i])
+
+            # Try to verify if we've reached the convergence % condition
+            try:
+                # Evaluate the "best" for this set and the fractional difference to the old best_vec
+                new_best_vec = new_vecs[np.argmin(new_entropies)]
+                frac_dif = np.sqrt(np.sum((np.abs((new_best_vec - best_vec) / best_vec)) ** 2))
+
+                # If the total fractional difference is less than our convergence specification, accept. Else continue.
+                if frac_dif <= self.monte_frac:
+                    best_vec, best_entropy = new_best_vec, entropies[np.argmin(entropies)]
+                    nsearchers = len(vecs)
+                    text = (
+                        "Monte-frac condition satisfied: solution reached on Iteration {0} with {1} Searchers previously active.\n"
+                        "No new points generated from previous searchers.").format(i + 1, nsearchers)
+                    print(text)
+                    break
+            except:
+                pass
+
+            # If the list is empty (and hence converged by default)
+            if len(new_vecs) == 0:
+                best_vec, best_entropy = vecs[np.argmin(entropies)], entropies[np.argmin(entropies)]
+                nsearchers = len(vecs)
+                text = (
+                    "No searchers left- solution reached by extinction of points on Iteration {0} with {1} Searchers previously active.\n"
+                    "No new points generated from previous searchers.").format(i + 1, nsearchers)
+                print(text)
+                break
+
+            # If percentage convergence is not satisfied, or the list isn't empty, continue.
+            else:
+
+                # Select best
+                new_best_vec = new_vecs[np.argmin(new_entropies)]
+
+                # Select the finest points (keep the number of searchers constant.)
+                new_vecs, new_entropies = self.lowest_monte_X_list(int(np.prod(self.coarse_nbins)),
+                                                                   new_vecs,
+                                                                   new_entropies)  # self.monte_pb for searcher regular
+
+                # Print
+                print("iter = ", i, " Entropy change in iteration of ", np.min(new_entropies) - np.min(entropies))
+
+                # Set vecs and entropies, and the new "best_vec" to use as reference
+                vecs, entropies, best_vec = new_vecs, new_entropies, new_best_vec
+
+        # In the case that the solution did not converge at all...
+        if type(best_entropy) == bool:
+            best_vec, best_entropy = vecs[np.argmin(entropies)], entropies[np.argmin(entropies)]
+            nsearchers = len(vecs)
+            text = ("Solution failed to converge... \n"
+                    "Reached on Iteration {0} with {1} Searchers previously active.\n"
+                    "No new points generated from previous searchers.").format(self.max_iter, nsearchers)
+            print(text)
+
+        # Return the best vector, best entropy
+        if print_it == True:
+            print(best_vec / self.default_model)
+
+        return best_vec, best_entropy 
+
+    #Here's the plan...
+    #- We're minimizing with response to the mass of the disk, mass of the halo, and halo concentration. 
+    #The exact programming process is...
+    #- Load in the spatial distribution (numpy array of positions, numpy array of energies)
+    #- Also define the range of masses/concentration
+    #- Set up g(r)/PDF for the spatial distribution, i.e. using a Gaussian KDE over the points (which may be sparse...)
+    #- Set up a grid of parameters for the potential model (the coarse grid)
+    #- Use Monte-carlo to randomly generate these points in the parameter space of m-disk/m-halo/concentration
+    ##################################################################################
+    #SECTION (A) 
+    #- For each point, integrate the potential over the PDF volume & 
+    #get variance in it (notes), and get energy distribution for this potential, too (numerically) 
+    #- Numerical integration/discretized integration of the potential over g(r) 
+    #- Consequently, you have the entropy (varphi^2/2varE^2) 
+    ##################################################################################
+    #SECTION (B)
+    #- Once the coarse grid is done, generate a finer grid about the finest X% of points (lowest.)
+    - Take a fine point, and randomly generate a few new points within half a grid spacing near it. 
+    #- Repeat the above section (A)
+    """

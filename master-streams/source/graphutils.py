@@ -21,13 +21,13 @@ import windows_directories
 import matplotlib.pyplot as plt
 import matplotlib.ticker as pltick
 import matplotlib.colors as mcolors
-from matplotlib import cm, rc
+from matplotlib import cm, rc, colors
 
 # Plotly
 import plotly.express as px
 import plotly.io as plio
 
-from energistics import orbigistics
+
 
 plio.renderers.default = 'browser'
 import plotly.graph_objects as go
@@ -42,6 +42,7 @@ from PIL import Image
 # Misc Astropy
 from astropy.visualization import LogStretch
 from astropy.visualization.mpl_normalize import ImageNormalize
+from astropy import units as u
 
 # Holds all graphing utilities for project. Notes:
 """
@@ -157,16 +158,22 @@ class twod_graph(object):
         plt.savefig(windows_directories.imgdir + "\\thetaphi_twodhist" + "\\" + savedex + ".png")
         plt.show()
 
-    # Regular 2D l,b plot.
-    def lbplot(self, table):
+    # Fancy l,b plot
+    def lbplot(self, table, savepath, negpi=False):
+
+        # Get axes and data
+        plt.close()
         tab_x,tab_y = table['l'],table['b']
+        if negpi == True:
+            tab_x = [d - 360 if d > 180 else d for d in tab_x]
         fig, axs = plt.subplots(nrows=1,ncols=1, dpi=300)
-        axs.grid(True, which='major', alpha=1, linewidth=0.25, color="black")  # Enable grids on subplot
-        axs.grid(True, which='minor', alpha=1, linewidth=0.25, color="black")
-        axs.scatter(tab_x,tab_y,color="black",s=0.1)
+        axs.grid(True, which='major', alpha=1, linewidth=0.25, color="pink")  # Enable grids on subplot
+        axs.grid(True, which='minor', alpha=1, linewidth=0.25, color="pink")
+        axs.scatter(tab_x,tab_y,color="red",s=0.5)
         plt.gca().invert_xaxis()
-        axs.set(xlabel="l", ylabel="b")
-        plt.show()
+        axs.set(xlabel="l / deg", ylabel="b / deg")
+        plt.savefig(savepath, dpi=300)
+        plt.close()
 
     # Regular 2D ra,dec plot.
     def radecplot(self, table):
@@ -563,7 +570,7 @@ class spec_graph(object):
     Set vasiliev to True to display his Sgr_snapshot (with LMC.) 
     optionally supply gcc_radecs = [[ras],[decs]] with greatcircle radecs
     """
-    def clust_radec(self, table, clustering, cluster_id=False, vasiliev=False, savedexdir=None, gcc_radecs=None):
+    def clust_radec(self, table, clustering, cluster_id=False, vasiliev=False, savedexdir=None, gcc_radecs=None, lb=False):
         if cluster_id is False:
             # Get the n0 of clusters
             nclust = np.max(clustering) + 1
@@ -579,8 +586,13 @@ class spec_graph(object):
                 simfile = "simdata.hdf5"
                 writer = hdfutils.hdf5_writer(simdir, simfile)
                 sim_table = writer.read_table("Sgr_snapshot", "astrotable")
-                tab_x, tab_y = sim_table['ra'], sim_table['dec']
-                axs.scatter(tab_x, tab_y, color="gray", s=0.01, marker=".")
+                if lb == False:
+                    tab_x, tab_y = sim_table['ra'], sim_table['dec']
+                    axs.scatter(tab_x, tab_y, color="gray", s=0.01, marker=".")
+                elif lb == True:
+                    l, b = bovy_coords.radec_to_lb(sim_table['ra'], sim_table['dec'], degree=True).T
+                    l = [d - 360 if d > 180 else d for d in l]
+                    axs.scatter(l, b, color="gray", s=0.01, marker=".")
 
             # Sort table by clustering
             table = galcentricutils.galconversion().nowrite_GAL_to_ICRS(table)
@@ -612,16 +624,26 @@ class spec_graph(object):
 
             # Now, plot for the sorted tables
             for sorted_table in sorted_tables:
-                tab_x, tab_y = sorted_table['ra'], sorted_table['dec']
-                axs.scatter(tab_x, tab_y, s=scale(len(sorted_table)), marker="s")
+                if lb == False:
+                    plt.gca().invert_xaxis()
+                    tab_x, tab_y = sorted_table['ra'], sorted_table['dec']
+                    axs.scatter(tab_x, tab_y, s=scale(len(sorted_table)), marker="s")
+                elif lb == True:
+                    l, b = bovy_coords.radec_to_lb(sorted_table['ra'], sorted_table['dec'], degree=True).T
+                    l = [d - 360 if d > 180 else d for d in l]
+                    axs.scatter(l, b, color="gray", s=0.01, marker=".")
+            plt.gca().invert_xaxis()
 
             # Misc axis things
             axs.set_facecolor("k")
-            plt.gca().invert_xaxis()
             axs.grid(True, which='major', alpha=1, linewidth=0.25)
             axs.grid(True, which='minor', alpha=1, linewidth=0.25)
             axs.grid(color="white")
-            axs.set(xlabel=r'$\alpha$', ylabel=r'$\delta$')
+
+            if lb == False:
+                axs.set(xlabel=r'$\alpha$' + " / deg", ylabel=r'$\delta$' + " / deg")
+            elif lb == True:
+                axs.set(xlabel=" l / deg", ylabel="b / deg")
 
             # Create save directory/save
             if savedexdir != None:
@@ -650,27 +672,48 @@ class spec_graph(object):
                 simfile = "simdata.hdf5"
                 writer = hdfutils.hdf5_writer(simdir, simfile)
                 sim_table = writer.read_table("Sgr_snapshot", "astrotable")
-                tab_x, tab_y = sim_table['ra'], sim_table['dec']
-                axs.scatter(tab_x, tab_y, color="gray", s=0.01, marker=".")
+                if lb == False:
+                    tab_x, tab_y = sim_table['ra'], sim_table['dec']
+                    axs.scatter(tab_x, tab_y, color="gray", s=0.01, marker=".")
+                elif lb == True:
+                    l, b = bovy_coords.lb_to_radec(sim_table['ra'], sim_table['dec'], degree=True).T
+                    l = [d - 360 if d > 180 else d for d in l]
+                    axs.scatter(l, b, color="gray", s=0.01, marker=".")
             # Then our clustering...
             masked_table = galcentricutils.galconversion().nowrite_GAL_to_ICRS(masked_table)
-            tab_x, tab_y = masked_table['ra'], masked_table['dec']
+
+            if lb == False:
+                tab_x, tab_y = masked_table['ra'], masked_table['dec']
+                axs.scatter(tab_x, tab_y, s=5, marker="s", color='red')
+            elif lb == True:
+                l, b = bovy_coords.radec_to_lb(masked_table['ra'], masked_table['dec'], degree=True).T
+                l = [d - 360 if d > 180 else d for d in l]
+                axs.scatter(l, b, color="red", s=1, marker="o")
+
             axs.grid(True, which='major', alpha=1, linewidth=0.25, color="black")  # Enable grids on subplot
             axs.grid(True, which='minor', alpha=1, linewidth=0.25, color="black")
-            axs.scatter(tab_x, tab_y, color="red", s=5, marker="s")
             legend_elements.append(Patch(edgecolor='white',
                                          facecolor='red',
                                          label="Stars"))
             # We can also add a great circle (though this necessitates a legend.)
             if gcc_radecs != None:
-                gccras, gccdecs = gcc_radecs
-                axs.scatter(gccras, gccdecs, color="blue", s=0.1)
+                if lb == False:
+                    gccras, gccdecs = gcc_radecs
+                    axs.scatter(gccras, gccdecs, color="blue", s=0.1)
+                elif lb == True:
+                    gccras, gccdecs = gcc_radecs
+                    l, b = bovy_coords.radec_to_lb(gccras, gccdecs, degree=True).T
+                    axs.scatter(l, b, color="blue", s=0.1)
                 legend_elements.append(Patch(edgecolor='white',facecolor='blue',label='GCC Fit'))
             plt.legend(loc='upper right', handles=legend_elements)
             axs.set_facecolor("k")
-            plt.gca().invert_xaxis()
-            axs.set(xlabel=r'$\alpha$', ylabel=r'$\delta$')
+            if lb == False:
+                axs.set(xlabel=r'$\alpha$' + " / deg", ylabel=r'$\delta$' + " / deg")
+            elif lb == True:
+                axs.set(xlabel=" l / deg", ylabel="b / deg")
             axs.grid(color="white")
+            plt.gca().invert_xaxis()
+
             # Create save directory/save
             if savedexdir != None:
                 try:
@@ -678,7 +721,170 @@ class spec_graph(object):
                 except:
                     pass
                 plt.savefig(windows_directories.imgdir + "\\" + "vasiliev"+ "\\" + savedexdir + ".png", dpi=300)
+            plt.close()
             #plt.show()
+
+    # Colour-coded map like in "The Global Dynamical Atlas of the Milky Way Mergers:
+    # Constraints from Gaia EDR3–based Orbits of Globular Clusters, Stellar Streams, and Satellite Galaxies"
+    # Coded by proper motion
+    def clust_lb_pms(self, table, clustering, clusts_to_plot, savepath):
+
+        # Create axis
+        fig, axs = plt.subplots(nrows=1,ncols=1,figsize=(10,4))
+
+        def truncate_colormap(cmap, minval=0.0, maxval=1.0, n=1000):
+            new_cmap = colors.LinearSegmentedColormap.from_list(
+                'trunc({n},{a:.2f},{b:.2f})'.format(n=cmap.name, a=minval, b=maxval),
+                cmap(np.linspace(minval, maxval, n)))
+            return new_cmap
+
+        # Set up colormap
+        cmap = cm.get_cmap('hsv_r')
+        cmap = truncate_colormap(cmap, 0.3, 1)
+        norm = colors.Normalize(vmin=-15, vmax=15)
+
+        # Plot
+        for clust in clusts_to_plot:
+
+            retain = [True if d == clust else False for d in clustering]
+            data_to_fit = table[retain]
+            l, b = data_to_fit['l'], data_to_fit['b']
+            l = [d - 360 if d > 180 else d for d in l]
+            dmu_b = data_to_fit['dmu_b']
+            plt.scatter(x=l, y=b, s=5, c=dmu_b, cmap=cmap, norm=norm)
+
+        # Grid-up
+        # plt.legend(handles=legend_elements, loc='upper right')
+        axs.grid(which='major', color='pink')
+        axs.set_facecolor("k")
+        plt.gca().invert_xaxis()
+        plt.colorbar(label=r'$\mu_\textrm{b}$' + " / mas" + r'$\cdot\textrm{yr}^{-1}$')
+        if savepath != None:
+            try:
+                plt.savefig(savepath, dpi=300)
+            except:
+                plt.savefig(savepath)
+
+        plt.show(dpi=200)
+
+    # The above but with colourmaps
+    def clust_lb_colors(self, table, clustering, clusts_to_plot, savepath):
+
+        # Create axis
+        fig, axs = plt.subplots(nrows=1,ncols=1,figsize=(7,4))
+        axs.set(xlim=[-180,180])
+        axs.set(ylim=[-90,90])
+
+        c = ["red",
+             "darkorange",
+             "lime",
+             "cyan",
+             "blue",
+             "fuchsia",
+             "darkviolet",
+             "dodgerblue",
+             "chocolate"]
+        if len(c) < len(clusts_to_plot):
+            randoms = np.random.random((len(clusts_to_plot) - len(c), 3))
+            for i in randoms:
+                c.append(i)
+
+        # Legend elements
+        legend_elements = []
+
+        # Plot
+        for num,clust in enumerate(clusts_to_plot):
+
+            retain = [True if d == clust else False for d in clustering]
+            data_to_fit = table[retain]
+            l, b = data_to_fit['l'], data_to_fit['b']
+            l = [d - 360 if d > 180 else d for d in l]
+            plt.scatter(x=l, y=b, s=5, c=c[num])
+            legend_elements.append(Patch(edgecolor='black',
+                                         facecolor=c[num],
+                                         label=str(clust)))
+
+
+        # Grid-up
+        # plt.legend(handles=legend_elements, loc='upper right')
+        axs.grid(which='major', color='pink')
+        axs.set_facecolor("k")
+        plt.gca().invert_xaxis()
+        plt.legend(handles=legend_elements, loc='lower left')
+        if savepath != None:
+            try:
+                plt.savefig(savepath, dpi=300)
+            except:
+                plt.savefig(savepath)
+
+        plt.show(dpi=200)
+
+    # Create a plot with orbit integrals for a table and display in l/b space
+    def lb_orbits(self, table, time_in_years, xlim, ylim, savepath=None, line=False, points=1000):
+
+        # Set axes
+        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(8,8))
+
+        # Make it pretty
+        ax.set(xlabel="l / deg",
+               ylabel="b / deg",
+               xlim=xlim,
+               ylim=ylim)
+
+        # Generate all the plots for each orbit
+        import energistics
+        orbigist = energistics.orbigistics()
+        orbits = orbigist.orbits(table)
+        inttime = np.linspace(0, time_in_years, points)*u.yr
+        for orbit in orbits:
+            forward = copy.copy(orbit)
+            backward = copy.copy(orbit)
+            forward.integrate(inttime, orbigist.pot)
+            forward = forward.getOrbit()
+            R, vR, vT, z, vz, phi = forward.T
+            R *= orbigist.rovo[0]
+            vR *= orbigist.rovo[1]
+            vT *= orbigist.rovo[1]
+            z *= orbigist.rovo[0]
+            vz *= orbigist.rovo[1]
+            X, Y, Z = bovy_coords.galcencyl_to_XYZ(R, phi, z, Xsun=orbigist.rovo[0], Zsun=orbigist.zo).T
+            l, b, d = bovy_coords.XYZ_to_lbd(X, Y, Z, degree=True).T
+            l = [d - 360 if d > 180 else d for d in l]
+            if line == True:
+                ax.plot(l,b,lw=1,color='red', zorder=1)
+            else:
+                ax.scatter(l, b, s=0.01, color='red', zorder=1)
+
+            backward.integrate(-inttime, orbigist.pot)
+            backward = backward.getOrbit()
+            R, vR, vT, z, vz, phi = backward.T
+            R *= orbigist.rovo[0]
+            vR *= orbigist.rovo[1]
+            vT *= orbigist.rovo[1]
+            z *= orbigist.rovo[0]
+            vz *= orbigist.rovo[1]
+            X, Y, Z = bovy_coords.galcencyl_to_XYZ(R, phi, z, Xsun=orbigist.rovo[0], Zsun=orbigist.zo).T
+            l, b, d = bovy_coords.XYZ_to_lbd(X, Y, Z, degree=True).T
+            l = [d - 360 if d > 180 else d for d in l]
+            if line == True:
+                ax.plot(l,b,lw=1,color='blue', zorder=1)
+            else:
+                ax.scatter(l, b, s=0.01, color='blue', zorder=1)
+
+        # Plot the base
+        ax.scatter([d - 360 if d > 180 else d for d in table['l']], table['b'], s=15, color='white', marker='x',
+                   zorder=2)
+
+        ax.set_facecolor("k")
+        plt.gca().invert_xaxis()
+
+        if savepath != None:
+            try:
+                plt.savefig(savepath, dpi=300)
+            except:
+                plt.savefig(savepath)
+
+        plt.show(dpi=200)
 
     # above but for theta/phi
     def clust_thetaphi(self, table, clustering, cluster_id=False, vasiliev=False, savedexdir=None, gcc_thetaphis=None):
@@ -935,7 +1141,8 @@ class spec_graph(object):
         data_to_fit = table[truefalse]
 
         # Define Orbigist
-        orbigist = orbigistics()
+        import energistics
+        orbigist = energistics.orbigistics()
 
         # Integrate the orbit
         forward = copy.deepcopy(orbit)
@@ -1025,3 +1232,82 @@ class spec_graph(object):
         grid = self.image_grid(imgs, rows=3, cols=5)
         grid.save(directory + "\\" + 'orbifitplot.jpg')
 
+    # Create an energy plot, given a table, and a set of clusters, with colours for each cluster/etc.
+    def energy_plot(self, table, clustering, clusters, texts, x_lim, y_lim, savepath=None, mcmillan=False, kpcmyr=False):
+
+        # Energy/etc
+        import energistics
+        if mcmillan == False:
+            energist = energistics.fast_energistics()
+            table = energist.default_E_c(table)
+        else:
+            # Calculate energy via McMillan 2017
+            energist = energistics.energistics()
+            table = energist.pot_eval(table)
+
+
+        # Convert units if necessary
+        if kpcmyr == True:
+            table['E'] = (table['E']*(u.km**2/u.s**2)).to(u.kpc**2/u.myr**2)
+            table['Lz'] = (table['Lz']*(u.kpc*u.km/u.s)).to(u.kpc**2/u.myr)
+
+        # Create axis
+        fig, axs = plt.subplots(nrows=1,ncols=1,figsize=(10,10))
+
+        # Legend elements
+        legend_elements = []
+
+        # Plot all the data
+        axs.scatter(table['Lz'], table['E'], marker='o', color='gray', s=8)
+        legend_elements.append(Patch(edgecolor='black', facecolor='gray', label='All Data'))
+        c = ["red",
+             "darkorange",
+             "lime",
+             "cyan",
+             "blue",
+             "fuchsia",
+             "darkviolet",
+             "dodgerblue",
+             "chocolate"]
+        if len(c) < len(clusters):
+            randoms = np.random.random((len(clusters) - len(c), 3))
+            for i in randoms:
+                c.append(i)
+
+        # For each clustering, plot the energy/etc
+        for num,cluster in enumerate(clusters):
+
+            retain = [True if d == cluster else False for d in clustering]
+            cluster_table = table[retain]
+
+            cluster_E, cluster_Lz = cluster_table['E'], cluster_table['Lz']
+
+            scat = axs.scatter(cluster_Lz, cluster_E, color=c[num], marker='x', s=16)
+
+            legend_elements.append(Patch(edgecolor='black',
+                                         facecolor=c[num],
+                                         label=texts[num]))
+
+        # Grid-up
+        plt.legend(handles=legend_elements, loc='upper right')
+        axs.grid(which='major', color='pink')
+
+        if kpcmyr == False:
+            plt.xlabel(r'$\textrm{L}_\textrm{z}\textrm{ / }\textrm{kpc}\cdot\textrm{km}\cdot\textrm{s}^{-1}$')
+            plt.ylabel(r'$\textrm{E / km}^2\cdot\textrm{s}^{-2}$')
+            axs.set(xlim=x_lim, ylim=y_lim)
+        else:
+            plt.xlabel(r'$\textrm{L}_\textrm{z}\textrm{ / }\textrm{kpc}^2\cdot\textrm{Myr}^{-1}$')
+            plt.ylabel(r'$\textrm{E / kpc}^2\cdot\textrm{Myr}^{-2}$')
+
+            y_lim = (np.array(y_lim)*(u.km**2/u.s**2)).to(u.kpc**2/u.myr**2).value
+            x_lim = (np.array(x_lim)*(u.kpc*u.km/u.s)).to(u.kpc**2/u.myr).value
+
+            axs.set(xlim=x_lim, ylim=y_lim)
+
+        if savepath != None:
+            try:
+                plt.savefig(savepath, dpi=300)
+            except:
+                plt.savefig(savepath)
+        plt.show()

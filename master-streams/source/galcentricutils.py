@@ -1,7 +1,6 @@
 import copy
 import pickle
 import time
-
 import pandas
 import munkres
 from astropy.stats import sigma_clipped_stats

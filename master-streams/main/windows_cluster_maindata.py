@@ -1,6 +1,8 @@
 import os
 import pickle
 import numpy as np
+from matplotlib import pyplot as plt
+
 import ascii_info
 import galcentricutils
 import graphutils
@@ -10,8 +12,8 @@ import time
 from energistics import orbifitter
 
 runfit = False
-plotfit = True
-vasiliev = False
+plotfit = False
+vasiliev = True
 
 if runfit == True:
     # Clustering parameters/etc
@@ -61,8 +63,14 @@ if vasiliev == True:
                                  ascii_info.asciiname).read_table(ascii_info.fullgroup,
                                                                   ascii_info.fullset)
     for clust_id in range(numclust):
-        graphutils.spec_graph().clust_radec(table, clustered, cluster_id=clust_id, savedexdir=str(clust_id) + "_clusttest")
-
+        graphutils.spec_graph().clust_radec(table, clustered, cluster_id=clust_id,
+                                            savedexdir=str(clust_id) + "_clusttest_lb", lb=True)
+        graphutils.spec_graph().clust_radec(table, clustered, cluster_id=clust_id,
+                                            savedexdir=str(clust_id) + "_clusttest_ra", lb=False)
+        # Also generate regular lb plots
+        #savepath = windows_directories.imgdir + "\\" + "vasiliev"+ "\\" + str(clust_id) + "_clusttest_lbplot" + ".png"
+        #graphutils.twod_graph().lbplot(table[[True if d == clust_id else False for d in clustered]], savepath,
+        #                               negpi=True)
 if plotfit == True:
     iterations, time_to_integrate, number_of_steps, try_load, graph = 2000, 0.3e9, 1000, True, True
     orbifit = orbifitter()
@@ -77,6 +85,10 @@ if plotfit == True:
         if cluster in [-1,13,16]:
             pass
         else:
+            try:
+                plt.close()
+            except:
+                pass
             fit = orbifit.galpy_fitting_nomemb(table, clustered, cluster, iterations, time_to_integrate,
                                                number_of_steps, True, True, False, False)
             savedir = windows_directories.imgdir + "\\" + "orbit_fitting_variables_maindata" + "\\" + str(cluster)

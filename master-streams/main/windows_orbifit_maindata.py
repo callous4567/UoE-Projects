@@ -33,10 +33,10 @@ should_run = False
 
 # Decide group and the clusters to cluster
 group = ascii_info.fullgroup
-clusters_to_orbifit = ascii_info.clusters_to_orbifit
+clusters_to_orbifit = ascii_info.clusters_to_maindata_orbifit
 
 # The saveids
-saveids = orbifit_saveids
+saveids = ascii_info.orbifit_maindata_saveids
 
 # Run only if name is main.
 if __name__ == "__main__" and should_run == True:
@@ -87,7 +87,7 @@ if __name__ == "__main__" and should_run == True:
 
     # Run the pool!
     pool = multiprocessing.Pool(8)
-    results = pool.map(windows_multiprocessing.do_orbifit, parameterss)
+    results = pool.map(windows_multiprocessing.do_orbifit_maindata, parameterss)
     pool.close()
 
     # Set the ran
@@ -114,7 +114,7 @@ if should_run == False: # False:
     for clust_to_fit in clusters_to_orbifit:
 
         # Specify savedir/savename and make path, for images
-        savedir = windows_directories.imgdir + "\\orbit_fitting_variables" + "\\" + str(clust_to_fit)
+        savedir = windows_directories.imgdir + "\\orbit_fitting_variables_maindata" + "\\" + str(clust_to_fit) + "_orbifit_maindata_run"
         save_unique = str(clust_to_fit)
         try:
             os.mkdir(savedir)
@@ -128,7 +128,7 @@ if should_run == False: # False:
         for saveid in saveids:
             # Load it
             with open(windows_directories.orbitsfitdir + "\\" + group + "_" +
-                      saveid + "_fitted_orbit_" + str(clust_to_fit) + ".txt", "rb") as f:
+                      saveid + "_fitted_orbit_maindata_" + str(clust_to_fit) + ".txt", "rb") as f:
                 clust_fitted = pickle.load(file=f)
                 orbits.append(clust_fitted)
 
@@ -171,4 +171,4 @@ if should_run == False: # False:
 
 
     writer = hdfutils.hdf5_writer(windows_directories.datadir, ascii_info.asciiname)
-    writer.write_df("greatfit_monte_orbistatistics", "data", df)
+    writer.write_df("greatfit_monte_orbistatistics_maindata", "data", df)

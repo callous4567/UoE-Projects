@@ -57,6 +57,12 @@ minpars_allgroups = [bhb_minpar, gcs_minpar, kgiant_minpar, lamostk_minpar]
 clusters_to_cluster = [6, 11, 2, 8, 13, 9, 3, 1, 12, 4, 5, 0, 10]
 gcc_widths = [30, 15, 20, 25, 40, 20, 30, 15, 20, 20, 30, 25, 30]
 clusters_to_orbifit = [1, 3, 5, 6, 8, 13]
+clusters_to_maindata_orbifit = clusters_to_cluster + [14,15]
+
 # The save-ids for all the generated orbit fits
 n_carlo = 200
 orbifit_saveids = [("orbifit_instance_{0:.0f}").format(d) for d in range(n_carlo)]
+
+# For the maindata
+n_carlo_maindata = 50
+orbifit_maindata_saveids = [("orbifit_instance_maindata_{0:.0f}").format(d) for d in range(n_carlo_maindata)]
