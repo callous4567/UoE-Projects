@@ -124,6 +124,16 @@ class energistics(object):
                                            ro=ro * u.kpc,
                                            vo=vo * u.km / u.s)
         self.pot = self.bulge + self.disk + self.halo
+
+        # Second pot with half the disk mass
+        newdidisk = potential.MiyamotoNagaiPotential(amp=0.5*amp_miyanagai,
+                                                     a=a_d * u.kpc,
+                                                     b=b_d * u.kpc,
+                                                     normalize=False,
+                                                     ro=ro * u.kpc,
+                                                     vo=vo * u.km / u.s)
+        self.pot_2 = self.bulge + newdidisk + self.halo
+
         # This is the Bovy 2015 potential, but with our own ro/vo
         # https://docs.galpy.org/en/v1.7.0/reference/potential.html
         bp = PowerSphericalPotentialwCutoff(alpha=1.8, rc=1.9 / ro, normalize=0.05, ro=ro, vo=vo)
@@ -189,6 +199,90 @@ class energistics(object):
         table['energy'] = table['pot'] + table['kinetic']
         # Return.
         return table
+
+    # Mass return for Cautun potential
+    def ret_cautun(self, radii):
+        # Import Pricy Potential
+        from galpy.potential.mwpotentials import Cautun20
+        minpot = Cautun20
+        tot = 0
+        for potential in minpot:
+            mass = potential.mass(radii*u.kpc)
+            tot += mass.value
+        return tot
+
+    # Mass return for Bovy 2014
+    def ret_bovy(self, radii):
+        tot = 0
+        for potential in self.pot2014:
+            mass = potential.mass(radii*u.kpc).value
+            tot += mass
+        return tot
+
+    # Get mass enclosed within radius for our potential
+    def ret_mass(self, radius):
+        tot = 0
+        for potential in self.pot:
+            mass = potential.mass(radius*u.kpc).value
+            tot += mass
+
+        return tot
+
+    # Get mass enclosed within radius for our potential with half mass disk
+    def ret_mass_2(self, radius):
+        tot = 0
+        for potential in self.pot_2:
+            mass = potential.mass(radius*u.kpc).value
+            tot += mass
+
+        return tot
+
+    # Given a halo mass and halo concentration, return the enclosed mass
+    def ret_halo(self, radius, M_nfw, c_nfw):
+        A_nfw = np.log(1 + c_nfw) - (c_nfw / (1 + c_nfw))  # see material.
+        amp_nfw = M_nfw * iau.GM_sun / A_nfw
+        halo = potential.NFWPotential(amp=amp_nfw,
+                                      a=a_nfw * u.kpc,
+                                      normalize=False,
+                                      ro=self.rovo[0] * u.kpc,
+                                      vo=self.rovo[1] * u.km / u.s)
+        return halo.mass(radius*u.kpc).value
+
+    # Same as above, but uses default mass parameters on top of the halo
+    def ret_halo_disk(self, radius, mm, cc):
+        tot = 0
+        for potential in self.pot[0:2]:
+            mass = potential.mass(radius*u.kpc)
+            tot += mass.value
+        tot += self.ret_halo(radius, mm, cc)
+
+        return tot
+
+    # Same as above, but also allows variance of the disk
+    def ret_halo_disk_manudisk(self, radius, md, mm, cc):
+        mass = self.pot[0].mass(radius*u.kpc).value
+
+        A_nfw = np.log(1 + cc) - (cc / (1 + cc))  # see material.
+        amp_nfw = mm * iau.GM_sun / A_nfw
+        halo = potential.NFWPotential(amp=amp_nfw,
+                                      a=a_nfw * u.kpc,
+                                      normalize=False,
+                                      ro=self.rovo[0] * u.kpc,
+                                      vo=self.rovo[1] * u.km / u.s)
+        mass += halo.mass(radius*u.kpc).value
+
+        amp_miyanagai = md * iau.GM_sun
+        disk = potential.MiyamotoNagaiPotential(amp=amp_miyanagai,
+                                                a=a_d * u.kpc,
+                                                b=b_d * u.kpc,
+                                                normalize=False,
+                                                ro=self.rovo[0] * u.kpc,
+                                                vo=self.rovo[1] * u.km / u.s)
+        mass += disk.mass(radius*u.kpc).value
+
+        return mass
+
+
 
 """
 Energistics but manually defined- see notes.

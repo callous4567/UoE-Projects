@@ -6,10 +6,12 @@ from matplotlib import pyplot as plt
 from numpy import argmin
 import pickle
 import ascii_info
+import energistics
 import galcentricutils
 import graphutils
 import hdfutils
 import windows_directories
+from energistics_constants import M_d, M_b, M_nfw, a_b, a_d, b_d, a_nfw, c_nfw
 
 """
 Monte-Carlo for a table [group,set]: for multiprocessed Monte-Carlo simulation. Default 4 workers.
@@ -383,3 +385,98 @@ def do_orbifit_maindata(parameters):
         with open(windows_directories.orbitsfitdir + "\\" + arrayinfo[0] + "_" +
                   arrayinfo[1] + "_fitted_orbit_maindata_" + str(clust_to_fit) + ".txt", "wb") as f:
             pickle.dump(obj=clust_fitted, file=f)
+
+# Minimum entropy fit
+def do_minentropy(parameters):
+
+    table, clustering, streams_todo, ranges, nmonte = parameters
+
+
+    # Set up an empty table to hold detail for each cluster (this assumes we do this per cluster.)
+    pointtable = Table(names=["clust", "M_d", "M_nfw", "c_nfw"], data=np.array([streams_todo,
+                                                                                np.zeros_like(streams_todo),
+                                                                                np.zeros_like(streams_todo),
+                                                                                np.zeros_like(streams_todo)]).T)
+    pointtable['clust'] = streams_todo
+
+    # Generate entropies and save.
+    points_saved = []
+    for clusts_to_fit in streams_todo:
+        clusts_to_fit = [clusts_to_fit]
+        # Grab and produce required data lists
+        x,y,z,vx,vy,vz = [[] for d in range(6)]
+        for clust_to_fit in clusts_to_fit:
+            data_to_fit = table[[True if d == clust_to_fit else False for d in clustering]]
+            xx, yy, zz = data_to_fit['x'], data_to_fit['y'], data_to_fit['z']
+            vxx, vyy, vzz = data_to_fit['vx'], data_to_fit['vy'], data_to_fit['vz']
+            x.append(xx)
+            y.append(yy)
+            z.append(zz)
+            vx.append(vxx)
+            vy.append(vyy)
+            vz.append(vzz)
+
+        # Set up entrofitter
+        entrofit = energistics.entro_fitter(x,y,z,
+                                            vx,vy,vz,
+                                            [ranges[0][0]*M_d, ranges[0][1]*M_d], [ranges[1][0]*M_nfw, ranges[1][1]*M_nfw], [ranges[2][0]*c_nfw, ranges[2][1]*c_nfw],
+                                            [M_b, a_b, M_d, a_d, b_d, M_nfw, a_nfw, c_nfw],
+                                            nmonte,
+                                            0.2, 100)
+
+        # Set up points
+        points = entrofit.genpoints()
+        entropies = entrofit.list_entropy(points)
+
+        # Get the minimum point
+        best_point = points[np.argmin(entropies)]/np.array([M_d, M_nfw, c_nfw])
+        points_saved.append(best_point)
+
+    points_saved = np.array(points_saved).T
+    pointtable['M_d'], pointtable['M_nfw'], pointtable['c_nfw'] = points_saved
+    return pointtable
+
+# The above, but combines all the provided clusters into one (i.e. multiple stream combination).
+# Here streamstodo is a list of lists, i.e. [[1,2,3,4], [4,5,6,7]], with entropy min over sum of each list
+def do_seventropy(parameters):
+
+    table, clustering, streams_todo, ranges, nmonte = parameters
+
+    # Generate entropies and save.
+    points_saved = []
+
+    for clusts_to_fit in streams_todo:
+
+        # Grab and produce required data lists
+        x,y,z,vx,vy,vz = [],[],[],[],[],[]
+        for clust_to_fit in clusts_to_fit:
+            data_to_fit = table[[True if d == clust_to_fit else False for d in clustering]]
+            xx, yy, zz = data_to_fit['x'], data_to_fit['y'], data_to_fit['z']
+            vxx, vyy, vzz = data_to_fit['vx'], data_to_fit['vy'], data_to_fit['vz']
+            x.append(xx)
+            y.append(yy)
+            z.append(zz)
+            vx.append(vxx)
+            vy.append(vyy)
+            vz.append(vzz)
+
+        # Set up entrofitter
+        entrofit = energistics.entro_fitter(x,y,z,
+                                            vx,vy,vz,
+                                            [ranges[0][0]*M_d, ranges[0][1]*M_d], [ranges[1][0]*M_nfw, ranges[1][1]*M_nfw], [ranges[2][0]*c_nfw, ranges[2][1]*c_nfw],
+                                            [M_b, a_b, M_d, a_d, b_d, M_nfw, a_nfw, c_nfw],
+                                            nmonte,
+                                            0.2, 100)
+
+        # Set up points
+        points = entrofit.genpoints()
+        entropies = entrofit.list_entropy(points)
+
+        # Get the minimum point
+        best_point = points[np.argmin(entropies)]/np.array([M_d, M_nfw, c_nfw])
+        points_saved.append(best_point)
+
+    best_point = np.array(points_saved)[0]
+
+    return best_point
+

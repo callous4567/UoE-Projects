@@ -23,6 +23,7 @@ panda = hdfutils.hdf5_writer(windows_directories.datadir,
 with open(windows_directories.clusterdir + "\\" + "fullgroup.cluster.txt", 'rb') as f:
     clustered = pickle.load(f)
 
+
 # Generate a HTML for this clustering under imgdir\\clustered and embed the number of clusters found.
 data = list(panda['vec_L'].to_numpy())
 graphutils.threed_graph().kmeans_L_array(data, clustered, savedexdir=False, browser=True)

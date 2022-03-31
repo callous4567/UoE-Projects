@@ -28,8 +28,8 @@ table = hdfutils.hdf5_writer(windows_directories.datadir,
 table = galcentricutils.angular().get_polar(table)
 
 # Generate the grid of great circles to try for the "first pass"
-grid_edge_length = 200 # number of GCC poles to generate
-resolution = 400 # number of datapoints to generate in GCC
+grid_edge_length = 400 # number of GCC poles to generate
+resolution = 800 # number of datapoints to generate in GCC
 pole_thetas, pole_phis, pole_indices = greatcount().fullgridgen(np.rint(grid_edge_length**2, casting='unsafe'))
 pole_thetas, pole_phis = np.degrees(pole_thetas), np.degrees(pole_phis)
 
@@ -97,16 +97,19 @@ for clust in clusters_to_try:
         plt.show() """
 
     # Go forth and plot the greatcircle against the data, in ra/dec.
-    graphutils.spec_graph().clust_thetaphi(table=table_included, clustering=clustered[included], cluster_id=which_try,
-                                           vasiliev=False, savedexdir="greatcount_beforeMC_" + str(clust) + "_thetaphi_greatcircle",
-                                           gcc_thetaphis=greatfit.gcc_gen(1000, *best_circle))
+    try:
+        graphutils.spec_graph().clust_thetaphi(table=table_included, clustering=clustered[included], cluster_id=which_try,
+                                               vasiliev=False, savedexdir="greatcount_beforeMC_" + str(clust) + "_thetaphi_greatcircle",
+                                               gcc_thetaphis=greatfit.gcc_gen(1000, *best_circle))
+    except:
+        pass
 
 # Save the best_circles to a table (non-memberpercent).
-writer = hdfutils.hdf5_writer(windows_directories.datadir, ascii_info.asciiname)
-table = Table()
-table['clust_to_try'] = clusters_to_try
-thetapoles, phipoles = np.array(poles_found).T
-table['theta'] = thetapoles
-table['phi'] = phipoles
-writer.write_table("greatcircles_nonmemberpercent_preliminary", "greatcircles", table)
+#writer = hdfutils.hdf5_writer(windows_directories.datadir, ascii_info.asciiname)
+#table = Table()
+#table['clust_to_try'] = clusters_to_try
+#thetapoles, phipoles = np.array(poles_found).T
+#table['theta'] = thetapoles
+#table['phi'] = phipoles
+#writer.write_table("greatcircles_nonmemberpercent_preliminary", "greatcircles", table)
 

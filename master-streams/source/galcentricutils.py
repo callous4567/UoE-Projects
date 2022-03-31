@@ -1294,7 +1294,7 @@ class cluster3d(object):
 
     # Hierarchical DBS on an array of L-Vectors [1,2,...] provided [minclustsize,minsamples]
     # Assumes data already preprocessed (see: getCuboid.)
-    def listhdbs(self, array, minpar):
+    def listhdbs(self, array, minpar, return_clust=False):
         # Flat-clustering example (select n_clusters instead.)
         #clusterer = flat.HDBSCAN_flat(min_cluster_size=minpar[0],
         #                              min_samples=minpar[1],
@@ -1307,7 +1307,11 @@ class cluster3d(object):
                                metric='l2',
                                algorithm='best')
         hdbsfit = hdbs.fit_predict(array)
-        return np.array(hdbsfit)
+
+        if return_clust == False:
+            return np.array(hdbsfit)
+        else:
+            return hdbs
 
 
     # Hierarchical DBS: returns memberships. Astropy Tables.
@@ -1483,11 +1487,10 @@ class compclust(object):
     The new label will be subject to an index limit (i.e. a "minimum value" to avoid mixing labels from multiple.) 
     """
     def compclust_multilabel(self, clust1, clust2, minimum_excess_index):
-        # Hungarian Algorithm Linear Sum Assignment (thanks Stack Exchange)
         contmat = contingency_matrix(clust1, clust2)
         max_cost = np.amax(contmat)
-        harvest_profit = max_cost - contmat
-        row_ind, col_ind = linear_sum_assignment(harvest_profit)
+        profit = max_cost - contmat
+        row_ind, col_ind = linear_sum_assignment(profit)
         sol_map = np.zeros(contmat.shape, dtype=bool)
         sol_map[row_ind, col_ind] = True
 

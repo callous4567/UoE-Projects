@@ -2,6 +2,7 @@ import copy
 import itertools
 import os
 import time
+import mpl_scatter_density
 
 import astropy
 import numpy as np
@@ -10,6 +11,7 @@ from astropy.table import Table, unique, vstack
 from astropy import units as u
 
 # Our own stuff.
+import ascii_info
 from galpy.util import bovy_coords
 from matplotlib.patches import Patch
 
@@ -76,8 +78,8 @@ class twod_graph(object):
         lims = [-maxradius,maxradius]
 
         for num,ax in enumerate(axs):
-            ax.grid(True, which='major', alpha=0, linestyle='dotted')  # Enable grids on subplot
-            ax.grid(True, which='minor', alpha=0, linestyle='dotted')
+            ax.grid(True, which='major', alpha=0, linestyle='dotted', color='pink')  # Enable grids on subplot
+            ax.grid(True, which='minor', alpha=0, linestyle='dotted', color='pink')
             ax.set(xlim=lims,
                    ylim=lims)
             ax.set(aspect="equal")
@@ -93,11 +95,78 @@ class twod_graph(object):
         axs[1].scatter(table['Lx']/divisor,table['Lz']/divisor,s=1,marker="x",c="black")
         axs[2].scatter(table['Ly']/divisor, table['Lz']/divisor, s=1, marker="x",c="black")
 
-        axs[1].set(xlabel="(" + r'$10^3$' + " kpc km/s)")
-        axs[0].set(ylabel="(" + r'$10^3$' + " kpc km/s)")
+        axs[1].set(xlabel=r'$10^3$' + " kpc km/s")
+        axs[0].set(ylabel=r'$10^3$' + " kpc km/s")
 
         plt.savefig(windows_directories.imgdir + "\\test.png", dpi=300)
+        plt.savefig(windows_directories.imgdir + "\\tripL.pgf")
         plt.show()
+
+    # With colours
+    def tripL_colour(self, table, maxradius, clustering, savepath=None, divisor=1e3, ):
+        table = galcentricutils.angular().get_momentum(table)
+        fig, axs = plt.subplots(nrows=1, ncols=3, sharey="row", figsize=(15,7), constrained_layout=True)
+        plt.subplots_adjust(wspace=0, hspace=0)
+
+        minor_ticks_x = pltick.MultipleLocator(1)
+        minor_ticks_y = pltick.MultipleLocator(1)
+
+        texts = ["Lx - Ly", "Lx - Lz", "Ly - Lz"]
+        lims = [-15/2,6]
+
+        clustercount = []
+        for i in clustering:
+            if i not in clustercount:
+                clustercount.append(i)
+        c = ["red",
+             "darkorange",
+             "lime",
+             "cyan",
+             "blue",
+             "fuchsia",
+             "darkviolet",
+             "dodgerblue",
+             "chocolate"]
+        if len(c) < np.max(clustering) + 11:
+            randoms = np.random.random((np.max(clustering) + 11 - len(c), 3))
+            for i in randoms:
+                c.append(i)
+        clustering += 1
+        colours = [c[d] for d in clustering]
+
+        legend_elements = []
+        for cluster in clustercount:
+            col = c[cluster + 1]
+            legend_elements.append(Patch(edgecolor='black',
+                                         facecolor=col,
+                                         label=str(cluster)))
+
+        for num,ax in enumerate(axs):
+            ax.grid(True, which='major', alpha=0, linestyle='dotted', color='pink')  # Enable grids on subplot
+            ax.grid(True, which='minor', alpha=0, linestyle='dotted', color='pink')
+            ax.set(xlim=lims,
+                   ylim=lims)
+            ax.set(aspect="equal")
+            ax.tick_params(axis="x", which="both", direction="in", length=4, bottom=True, left=True, right=True,
+                           top=True)
+            ax.tick_params(axis="y", which="both", direction="in", length=4, bottom=True, left=True, right=True,
+                           top=True)
+            ax.xaxis.set_minor_locator(minor_ticks_x)
+            ax.yaxis.set_minor_locator(minor_ticks_y)
+            ax.text(s=texts[num],x=lims[0],y=lims[1]+0.1)
+
+        axs[0].scatter(table['Lx']/divisor, table['Ly']/divisor, s=1, marker="x",c=colours, cmap='gist_rainbow')
+        axs[1].scatter(table['Lx']/divisor,table['Lz']/divisor,s=1,marker="x",c=colours, cmap='gist_rainbow')
+        axs[2].scatter(table['Ly']/divisor, table['Lz']/divisor, s=1, marker="x",c=colours, cmap='gist_rainbow')
+        axs[2].legend(handles=legend_elements, loc='center right', bbox_to_anchor=(1.3,0.5))
+
+        axs[1].set(xlabel=r'$10^3$' + " kpc km/s")
+        axs[0].set(ylabel=r'$10^3$' + " kpc km/s")
+
+        if savepath != None:
+            plt.savefig(savepath, dpi=300)
+        else:
+            plt.show()
 
     # Hammer-Aitoff Projection Plots. Need angles in RADIANS for some god damn ridiculous reason.
     # [-180,180],[-90,90] phi,theta
@@ -247,6 +316,7 @@ class twod_graph(object):
             plt.show()
         else:
             plt.savefig(savepath + ".png", dpi=300)
+
 
 # 3D graphing tools prototyping
 class threed_graph(object):
@@ -628,10 +698,19 @@ class spec_graph(object):
                     plt.gca().invert_xaxis()
                     tab_x, tab_y = sorted_table['ra'], sorted_table['dec']
                     axs.scatter(tab_x, tab_y, s=scale(len(sorted_table)), marker="s")
+                    # Set limits
+                    axs.set(xlim=[np.min(tab_x), np.max(tab_x)],
+                            ylim=[np.min(tab_y), np.max(tab_y)])
                 elif lb == True:
                     l, b = bovy_coords.radec_to_lb(sorted_table['ra'], sorted_table['dec'], degree=True).T
                     l = [d - 360 if d > 180 else d for d in l]
                     axs.scatter(l, b, color="gray", s=0.01, marker=".")
+                    # Set limits
+                    axs.set(xlim=[np.min(l), np.max(l)],
+                            ylim=[np.min(b), np.max(b)])
+
+
+            # Invert axes
             plt.gca().invert_xaxis()
 
             # Misc axis things
@@ -667,7 +746,7 @@ class spec_graph(object):
             # first do Vasilievs, though.
             legend_elements = []
             if vasiliev==True:
-                legend_elements.append(Patch(edgecolor='white',facecolor='gray',label="Vasiliev Model"))
+                legend_elements.append(Patch(edgecolor='white',facecolor='gray',label="Tango for 3"))
                 simdir = windows_directories.datadir + "\\vasiliev\\Sgr_snapshot"
                 simfile = "simdata.hdf5"
                 writer = hdfutils.hdf5_writer(simdir, simfile)
@@ -676,25 +755,10 @@ class spec_graph(object):
                     tab_x, tab_y = sim_table['ra'], sim_table['dec']
                     axs.scatter(tab_x, tab_y, color="gray", s=0.01, marker=".")
                 elif lb == True:
-                    l, b = bovy_coords.lb_to_radec(sim_table['ra'], sim_table['dec'], degree=True).T
+                    l, b = bovy_coords.radec_to_lb(sim_table['ra'], sim_table['dec'], degree=True).T
                     l = [d - 360 if d > 180 else d for d in l]
                     axs.scatter(l, b, color="gray", s=0.01, marker=".")
-            # Then our clustering...
-            masked_table = galcentricutils.galconversion().nowrite_GAL_to_ICRS(masked_table)
 
-            if lb == False:
-                tab_x, tab_y = masked_table['ra'], masked_table['dec']
-                axs.scatter(tab_x, tab_y, s=5, marker="s", color='red')
-            elif lb == True:
-                l, b = bovy_coords.radec_to_lb(masked_table['ra'], masked_table['dec'], degree=True).T
-                l = [d - 360 if d > 180 else d for d in l]
-                axs.scatter(l, b, color="red", s=1, marker="o")
-
-            axs.grid(True, which='major', alpha=1, linewidth=0.25, color="black")  # Enable grids on subplot
-            axs.grid(True, which='minor', alpha=1, linewidth=0.25, color="black")
-            legend_elements.append(Patch(edgecolor='white',
-                                         facecolor='red',
-                                         label="Stars"))
             # We can also add a great circle (though this necessitates a legend.)
             if gcc_radecs != None:
                 if lb == False:
@@ -704,7 +768,31 @@ class spec_graph(object):
                     gccras, gccdecs = gcc_radecs
                     l, b = bovy_coords.radec_to_lb(gccras, gccdecs, degree=True).T
                     axs.scatter(l, b, color="blue", s=0.1)
-                legend_elements.append(Patch(edgecolor='white',facecolor='blue',label='GCC Fit'))
+                legend_elements.append(Patch(edgecolor='white', facecolor='blue', label='GCC Fit'))
+
+            # Then our clustering...
+            masked_table = galcentricutils.galconversion().nowrite_GAL_to_ICRS(masked_table)
+
+            if lb == False:
+                tab_x, tab_y = masked_table['ra'], masked_table['dec']
+                axs.scatter(tab_x, tab_y, s=5, marker="s", color='red')
+                # Set limits
+                axs.set(xlim=[np.min(tab_x), np.max(tab_x)],
+                        ylim=[np.min(tab_y), np.max(tab_y)])
+            elif lb == True:
+                l, b = bovy_coords.radec_to_lb(masked_table['ra'], masked_table['dec'], degree=True).T
+                l = [d - 360 if d > 180 else d for d in l]
+                axs.scatter(l, b, color="red", s=1, marker="o")
+                # Set limits
+                axs.set(xlim=[np.min(l), np.max(l)],
+                        ylim=[np.min(b), np.max(b)])
+
+            axs.grid(True, which='major', alpha=1, linewidth=0.25, color="black")  # Enable grids on subplot
+            axs.grid(True, which='minor', alpha=1, linewidth=0.25, color="black")
+            legend_elements.append(Patch(edgecolor='white',
+                                         facecolor='red',
+                                         label="Stars"))
+
             plt.legend(loc='upper right', handles=legend_elements)
             axs.set_facecolor("k")
             if lb == False:
@@ -768,7 +856,7 @@ class spec_graph(object):
         plt.show(dpi=200)
 
     # The above but with colourmaps
-    def clust_lb_colors(self, table, clustering, clusts_to_plot, savepath):
+    def clust_lb_colors(self, table, clustering, clusts_to_plot, savepath, vasiliev=False):
 
         # Create axis
         fig, axs = plt.subplots(nrows=1,ncols=1,figsize=(7,4))
@@ -792,6 +880,19 @@ class spec_graph(object):
         # Legend elements
         legend_elements = []
 
+        # Vasiliev
+        if vasiliev == True:
+            simdir = windows_directories.datadir + "\\vasiliev\\Sgr_snapshot"
+            simfile = "simdata.hdf5"
+            writer = hdfutils.hdf5_writer(simdir, simfile)
+            sim_table = writer.read_table("Sgr_snapshot", "astrotable")
+            tab_x, tab_y = sim_table['l'], sim_table['b']
+            tab_x = [d - 360 if d > 180 else d for d in tab_x]
+            axs.scatter(tab_x, tab_y, color="white", s=0.01, marker=".")
+            legend_elements.append(Patch(edgecolor='white',
+                                         facecolor='white',
+                                         label="Sgr. Model"))
+
         # Plot
         for num,clust in enumerate(clusts_to_plot):
 
@@ -809,6 +910,8 @@ class spec_graph(object):
         # plt.legend(handles=legend_elements, loc='upper right')
         axs.grid(which='major', color='pink')
         axs.set_facecolor("k")
+        axs.set(xlabel="l / deg",
+                ylabel="b / deg")
         plt.gca().invert_xaxis()
         plt.legend(handles=legend_elements, loc='lower left')
         if savepath != None:
@@ -985,7 +1088,14 @@ class spec_graph(object):
                 sim_table = galcentricutils.angular().get_polar(sim_table)
                 tab_x, tab_y = sim_table['theta'], sim_table['phi']
                 axs.scatter(tab_x, tab_y, color="gray", s=0.01, marker=".")
-                legend_elements.append(Patch(edgecolor='white',facecolor='gray',label="Vasiliev Model"))
+                legend_elements.append(Patch(edgecolor='white',facecolor='gray',label="Tango for 3"))
+
+            # We can also add a great circle (though this necessitates a legend.)
+            if gcc_thetaphis != None:
+                gccthetas, gccphis = gcc_thetaphis
+                axs.scatter(gccthetas, gccphis, color="blue", s=0.1)
+                legend_elements.append(Patch(edgecolor='white',facecolor='blue',label='GCC Fit'))
+
             # Then our clustering...
             tab_x, tab_y = masked_table['theta'], masked_table['phi']
             axs.grid(True, which='major', alpha=1, linewidth=0.25, color="black")  # Enable grids on subplot
@@ -994,11 +1104,9 @@ class spec_graph(object):
             legend_elements.append(Patch(edgecolor='white',
                                          facecolor='red',
                                          label="Stars"))
-            # We can also add a great circle (though this necessitates a legend.)
-            if gcc_thetaphis != None:
-                gccthetas, gccphis = gcc_thetaphis
-                axs.scatter(gccthetas, gccphis, color="blue", s=0.1)
-                legend_elements.append(Patch(edgecolor='white',facecolor='blue',label='GCC Fit'))
+            axs.set(xlim=[np.min(tab_x), np.max(tab_x)],
+                    ylim=[np.min(tab_y), np.max(tab_y)])
+
 
             plt.legend(loc='upper right', handles=legend_elements)
             axs.set_facecolor("k")
@@ -1132,6 +1240,7 @@ class spec_graph(object):
             except:
                 print("Failed removing image in graphtuils/sofie", image)
                 time.sleep(9999999999)
+
 
     # Orbit graphing. Take an orbit, a data table, and produce a menagerie of plots demonstrating the fit.
     def orbiplot(self, table, clustering, clust_to_fit, orbit, integration_time, number_of_steps, directory, unique_text, method='dopr54_c'):

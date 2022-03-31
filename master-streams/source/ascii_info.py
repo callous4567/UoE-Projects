@@ -41,12 +41,12 @@ duplimonte_LE_saveids = [("LE_{}").format(d) for d in [str(d) for d in range(dup
 duplimonte_LXYZ_saveids = [("LXYZ_{}").format(d) for d in [str(d) for d in range(duplimonte_number)]]
 
 # Set minpars for each group for cluster_duplimonte. minpar is SIZE,SAMPLES.
-bhb_minpar = [9,7]
+bhb_minpar = [8,7]
 gcs_minpar = [5,5]
-kgiant_minpar = [8,12]
-lamostk_minpar = [8,12]
+kgiant_minpar = [8,10]
+lamostk_minpar = [8,10]
 fulldata_oldminpar = [15,15]
-fulldata_minpar = [8, 10] # 10,10 is our final borderline acceptance (which works with our data cleaning.). 15,15 is the original. [15,15]
+fulldata_minpar = [8, 10] # 8,10 is our final borderline acceptance (which works with our data cleaning.). 15,15 is the original. [15,15]
 fulldata_minpar_L4D = fulldata_minpar
 fulldata_minpar_LE = fulldata_minpar
 minpars_allgroups = [bhb_minpar, gcs_minpar, kgiant_minpar, lamostk_minpar]
@@ -57,7 +57,7 @@ minpars_allgroups = [bhb_minpar, gcs_minpar, kgiant_minpar, lamostk_minpar]
 clusters_to_cluster = [6, 11, 2, 8, 13, 9, 3, 1, 12, 4, 5, 0, 10]
 gcc_widths = [30, 15, 20, 25, 40, 20, 30, 15, 20, 20, 30, 25, 30]
 clusters_to_orbifit = [1, 3, 5, 6, 8, 13]
-clusters_to_maindata_orbifit = clusters_to_cluster + [14,15]
+clusters_to_maindata_orbifit = [2,9,10,12,14,15]
 
 # The save-ids for all the generated orbit fits
 n_carlo = 200

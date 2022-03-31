@@ -11,9 +11,9 @@ import windows_directories
 import time
 from energistics import orbifitter
 
-runfit = False
+runfit = True
 plotfit = False
-vasiliev = True
+vasiliev = False
 
 if runfit == True:
     # Clustering parameters/etc
@@ -49,6 +49,17 @@ if runfit == True:
     savedexdir = "\\clustered\\fullgroup_clustered_" + str(numclust) + "_clusters_found_spatial"
     graphutils.threed_graph().xmeans_L_array(pos, clustered, savedexdir, False, False)
 
+    # Generate a table of membership fractions/etc
+    fracs = [0 for d in range(np.max(clustered) + 1)]
+    for cluster in range(np.max(clustered) + 1):
+        for star in clustered:
+            if star == cluster:
+                fracs[cluster] += 1
+    fracs = np.array(fracs)
+    fracs /= len(clustered)
+    data_array = np.array([np.arange(0, np.max(clustered) + 1, 1), fracs]).T
+
+
 # Load Data
 table = hdfutils.hdf5_writer(windows_directories.datadir,
                              ascii_info.asciiname).read_table(ascii_info.fullgroup,
@@ -63,10 +74,20 @@ if vasiliev == True:
                                  ascii_info.asciiname).read_table(ascii_info.fullgroup,
                                                                   ascii_info.fullset)
     for clust_id in range(numclust):
-        graphutils.spec_graph().clust_radec(table, clustered, cluster_id=clust_id,
-                                            savedexdir=str(clust_id) + "_clusttest_lb", lb=True)
-        graphutils.spec_graph().clust_radec(table, clustered, cluster_id=clust_id,
-                                            savedexdir=str(clust_id) + "_clusttest_ra", lb=False)
+        if clust_id == 13:
+            graphutils.spec_graph().clust_radec(table, clustered, cluster_id=clust_id,
+                                                savedexdir=str(clust_id) + "_clusttest_lb", lb=True, vasiliev=True)
+            graphutils.spec_graph().clust_radec(table, clustered, cluster_id=clust_id,
+                                                savedexdir=str(clust_id) + "_clusttest_ra", lb=False, vasiliev=True)
+        else:
+            try:
+                graphutils.spec_graph().clust_radec(table, clustered, cluster_id=clust_id,
+                                                    savedexdir=str(clust_id) + "_clusttest_lb", lb=True, vasiliev=False)
+                graphutils.spec_graph().clust_radec(table, clustered, cluster_id=clust_id,
+                                                    savedexdir=str(clust_id) + "_clusttest_ra", lb=False, vasiliev=False)
+            except:
+                pass
+
         # Also generate regular lb plots
         #savepath = windows_directories.imgdir + "\\" + "vasiliev"+ "\\" + str(clust_id) + "_clusttest_lbplot" + ".png"
         #graphutils.twod_graph().lbplot(table[[True if d == clust_id else False for d in clustered]], savepath,

@@ -29,7 +29,7 @@ Estimate purely based on 200 sets instead of 1,000 due to time constraints (it t
 warnings.filterwarnings("ignore", message="Loky-backed parallel loops cannot be called in a multiprocessing, setting n_jobs=1")
 
 # Holder for whether to generate orbits or not. If False, use old orbits.
-should_run = False
+should_run = True
 
 # Decide group and the clusters to cluster
 group = ascii_info.fullgroup
@@ -41,37 +41,46 @@ saveids = ascii_info.orbifit_maindata_saveids
 # Run only if name is main.
 if __name__ == "__main__" and should_run == True:
 
-    # Grab the table
-    table = hdfutils.hdf5_writer(windows_directories.datadir,
-                                 ascii_info.asciiname).read_table(ascii_info.fullgroup,
-                                                                  ascii_info.fullset)
-
-    # Grab the elements-of-interest
-    table = table[['l','b','dist','dmu_l','dmu_b','vlos','edist','edmu_l','edmu_b','evlost']]
-
-    # Generate n_carlo tables like table
     tables = []
 
-    # Generate error'd tables
-    for i in range(n_carlo):
+    try:
+        with open(windows_directories.datadir + "\\subtableorbits.txt", 'rb') as f:
+            tables = pickle.load(file=f)
+            tables = tables[0:n_carlo]
+            print("Loaded")
+    except:
 
-        # Copy the table
-        subtable = copy.deepcopy(table)
+        # Grab the table
+        table = hdfutils.hdf5_writer(windows_directories.datadir,
+                                     ascii_info.asciiname).read_table(ascii_info.fullgroup,
+                                                                      ascii_info.fullset)
 
-        # Now, for the rows.
-        for row in subtable:
+        # Grab the elements-of-interest
+        table = table[['l','b','dist','dmu_l','dmu_b','vlos','edist','edmu_l','edmu_b','evlost']]
 
-            # Generate artificial data
-            dist = np.random.default_rng().normal(row['dist'], row['edist'], 1)
-            dist = np.abs(dist) # negatives happen- bad for calculating.
-            dmul = np.random.default_rng().normal(row['dmu_l'], row['edmu_l'], 1)
-            dmub = np.random.default_rng().normal(row['dmu_b'], row['edmu_b'], 1)
-            vlos = np.random.default_rng().normal(row['vlos'], row['evlost'], 1)
+        # Generate n_carlo tables like table
+        tables = []
 
-            row['dist'], row['dmu_l'], row['dmu_b'], row['vlos'] = dist[0], dmul[0], dmub[0], vlos[0]
+        # Generate error'd tables
+        for i in range(n_carlo):
 
-        # Append
-        tables.append(subtable)
+            # Copy the table
+            subtable = copy.deepcopy(table)
+
+            # Now, for the rows.
+            for row in subtable:
+
+                # Generate artificial data
+                dist = np.random.default_rng().normal(row['dist'], row['edist'], 1)
+                dist = np.abs(dist) # negatives happen- bad for calculating.
+                dmul = np.random.default_rng().normal(row['dmu_l'], row['edmu_l'], 1)
+                dmub = np.random.default_rng().normal(row['dmu_b'], row['edmu_b'], 1)
+                vlos = np.random.default_rng().normal(row['vlos'], row['evlost'], 1)
+
+                row['dist'], row['dmu_l'], row['dmu_b'], row['vlos'] = dist[0], dmul[0], dmub[0], vlos[0]
+
+            # Append
+            tables.append(subtable)
 
     # Parameters for multiprocessing
     parameterss = []

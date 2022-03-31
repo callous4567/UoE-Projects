@@ -83,7 +83,7 @@ if __name__ == "__main__" and should_run == True:
                              clusters_to_orbifit,
                              2000,
                              1e9,
-                             1000])
+                             2000])
 
     # Run the pool!
     pool = multiprocessing.Pool(8)
