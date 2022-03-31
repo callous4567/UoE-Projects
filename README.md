@@ -16,7 +16,7 @@ This includes code for the:
 
 ### 5th Year Python Modelling and Visualization (under SimVis) ONGOING !!!
 
-### 5th Year MSc Project _with data redacted_ (under master-streams) ONGOING !!!
+### 5th Year MSc Project _with data redacted_ (under master-streams) 
 
 Disclaimer: a lot of it is dirty/as-it-was-after-ending-the-work
 What student cleans up their code after the fact? Not this one.
