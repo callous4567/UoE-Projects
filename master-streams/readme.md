@@ -39,8 +39,9 @@ of random code snips.
 ### main 
 
 Makes use of base classes and methods to effect something greater than the sum of its parts. Basically, get the results
-using the methods written. Toward the end of hte project, I was hasty- consequently, there are some full-blown pieces
-of code in here- by and large though it's just multiprocessing implementations of the source material.
+using the methods written. Toward the end of the project, I was hasty- consequently, there are some full-blown pieces
+of code in here- by and large though it's just multiprocessing implementations of the source material to allow for Monte Carlo
+error propagation and that sort of thing.
 
 ### source 
 
