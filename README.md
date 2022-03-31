@@ -28,7 +28,7 @@ The good stuff. The cream of the crop. Some of my finest... mostly!
 
 The best of the best- the slickest of the slick! I'll admit, I'm getting there! 
 
-- Computational Astrophysics course- has grid-hydrodynamic codes and some stuff for perfecetly replicating graphs from literature (this is the bit I am proud of- the effort with Matplotlib!)
+- Computational Astrophysics course- has grid-hydrodynamic codes and some stuff for perfectly replicating graphs from literature (this is the bit I am proud of- the effort with Matplotlib!)
 - SimAndVis has the "Modelling and Visualization" course. My best of all! Game of Life, SIRS, 2D Ising Model, XY Ising Model... the list goes on and on! **Has its own readme.**
 - master-streams, aka my MSc Thesis! The finest most refined bit of code. Tears to my eyes I swear. It also **has its own readme** which I recommend.
 
