@@ -1,7 +1,7 @@
 # Frequentist characterization of structure in angular momentum space with hierarchical clustering
 
 This is the GitHub repository for my (poorly named, I know- I don't know what I was thinking!) Masters Thesis.
-You'll find all the code I used here. I'll do my best to clean it up a bit and perhaps add some documentation,
+You'll find all the code I used here. I'll do my best to clean it up a bit *in the future* and perhaps add some documentation,
 but I make no promises. I'm a somewhat busy guy, after all! *wink* 
 
 ## What the hell does that title even mean?
@@ -31,8 +31,8 @@ I did end up making a lot of code in the hope of using Bayesian Gaussian Mixture
 snips around that are useful for this. I think I even made a thing to generate random mixtures to test my GMMs on 
 
 ### deprecated 
-Has old bits of code not made use of in final work. This includes an implementation of GCCs as made use of by
-[Charles King III and pals](https://iopscience.iop.org/article/10.1088/0004-637X/750/1/81), alongside implementations
+Has old bits of code not made use of in final work. This includes an (at the time) full implementation of GCCs as made use of by
+[Charles King III and pals](https://iopscience.iop.org/article/10.1088/0004-637X/750/1/81) for pole counts, alongside implementations
 of Jo Bovy's [XD](https://github.com/jobovy/extreme-deconvolution) package to try and use GMMs to get substructure in L-space. There's generally just lots and lots
 of random code snips.
 
@@ -48,7 +48,7 @@ Contains all the individual base classes and methods used. There is *a lot* here
 
 - Evaluating potentials with Numba as used in the thesis
 - Minimum Entropy Method implementation in 3D with quasi-MCMC, Grid Search, and Monte Carlo grid search
-- Numerical 3D probability density function generation for arrays, including Gauss kernel smoothing functionality
+- Numerical 3D probability density function generation for arrays via rectangular binning, including Gauss kernel smoothing functionality
 - Least-squares-powered orbit fitting, making use of [galpy](https://github.com/jobovy/galpy) for orbit generation
 - An overabundance of graphing tools, including for the replication of plots from [Sarah Sofie's thesis](https://fse.studenttheses.ub.rug.nl/24089/) for examining a comparison against the canonical integrals of motion
 - The most recent rendition of hdfutils, my class that allows easy use of [h5py](https://www.h5py.org/)
