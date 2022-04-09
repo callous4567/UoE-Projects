@@ -66,7 +66,7 @@ find their way here will enjoy it thoroughly.
 
 ### testing 
 
-As deadlines closed in, I got lazy and sloppy. This contains code that was used to dirtily produce plots and last-minute
+As deadlines closed in, I got lazy and sloppy. I fell from trees, got depressed, and drank- mainly lots of cider. This contains code that was used to dirtily produce plots and last-minute
 results. This includes some code for visualizing degeneracy of the Minimum Entropy Method- other than that? Hah.
 
 ## Miscellaneous words from myself 
