@@ -6,6 +6,11 @@ You'll find options for the standard Jacobian relaxation, Gauss-Seidel rendition
 to create random charge distributions (with normals and so forth for each charge) and so on. See the video
 [here](https://www.youtube.com/watch?v=ksZ-GeKRyag) for an animation.
 
+There's a function to create random charge distributions- pretty fun to play with. You'll always get x-y projections with the plotting I've added for the live-view animation- here's an example snip :) 
+
+![alt text](https://github.com/callous4567/UoE-Projects/blob/master/SimAndVis/C3_2/124124124.PNG)
+
+
 You can also create some neat plots to compare the simulation of a point charge to the actual analytical
 distribution, i.e.
 
