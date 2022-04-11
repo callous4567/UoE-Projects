@@ -9,6 +9,8 @@ to create random charge distributions (with normals and so forth for each charge
 You can also create some neat plots to compare the simulation of a point charge to the actual analytical
 distribution, i.e.
 
+![alt text](https://github.com/callous4567/UoE-Projects/blob/master/SimAndVis/C3_2/example_fieldplot_better.png)
+
 
 
 ## fast_relax.py
