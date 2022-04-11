@@ -2,8 +2,11 @@
 The model here follows the notes laid out by Davide in the Computer Modelling and Visualization course
 here at the University of Edinburgh. It's not the general form that you find on Wikipedia, for example.
 
-In any case, the phenomenology and such is the same. You can get spinodal decomposition, globule formation, and so forth. See [here](https://www.youtube.com/watch?v=ksZ-GeKRyag)
-for a video showing the code in action.
+In any case, the phenomenology and such is the same. You can get spinodal decomposition, globule formation, and so forth- i.e.
+
+![alt text](https://github.com/callous4567/UoE-Projects/blob/master/SimAndVis/C3/bridges.PNG)
+
+See [here](https://www.youtube.com/watch?v=ksZ-GeKRyag) for a video showing the code in action. The formation of globules also occurs if you alter the overall value of the composite order field- this is included with a whole sleuth of parameters to modify the model on run. 
 
 ## fast_cahn.py
 Contains the Numba code. 
