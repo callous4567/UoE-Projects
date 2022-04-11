@@ -29,7 +29,7 @@ def electrofield(pot_dist, zmid, boundary):
             return pot_dist[i,j,k]
 
     # Placeholder for field directions and magnitudes for this slice
-    field_vecs = np.empty((2, shape[0], shape[1]), float64)
+    field_vecs = np.zeros((2, shape[0], shape[1]), float64)
 
     # Get the field vectors about zmid/etc. Only the XY components (who cares about z, am I right?)
     for i in range(shape[0]):

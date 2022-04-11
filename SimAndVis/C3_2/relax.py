@@ -16,6 +16,7 @@ from SimAndVis.C3_2 import multiprocessing_functions
 from SimAndVis.C3_2.fast_electrorelax import electrofield_nonnormal
 from SimAndVis.C3_2.fast_relax import potential_stagger, potential, meshgrid, fast_gs, converged, fast_sor, \
     fast_sor_inplace
+from SimAndVis.C3_2.fast_electrorelax import electrofield
 
 
 class charge_generator(object):
@@ -77,8 +78,6 @@ class relaxed_poisson(object):
     # Analytical potential generator. Kernel width should be at least double the padding (to conserve charge.)
     def gen_analypot(self, gauss_kernel_width, zmid, sqr_dist_relax, stagger, nonnorm=False):
 
-        from SimAndVis.C3_2.fast_electrorelax import electrofield
-
         if gauss_kernel_width == 0:
 
             analy_rho = self.rho
@@ -124,7 +123,6 @@ class relaxed_poisson(object):
     # Plot x,y slice over time (ideal for point potential.)
     def run_sim_plot_point(self, binrate, gauss_kernel_width, sqr_dist_relax, stagger):
 
-        from SimAndVis.C3_2.fast_electrorelax import electrofield
 
         # Interactive on
         plt.ion()
@@ -143,14 +141,14 @@ class relaxed_poisson(object):
         fig, axs = plt.subplots(nrows=1, ncols=3, figsize=(8,4))
 
         # Plot the electric field, also
-        field_vecs = electrofield(self.pot_dist, zmid, self.boundary)
+        field_vecs = np.ones((2, shape[0], shape[1]))/np.sqrt(2)
         # Plot the potential start
         quiver = axs[0].quiver(coord_slice[0], coord_slice[1], field_vecs[0], field_vecs[1], color='black')
         im = axs[0].imshow(self.pot_dist[:,:,zmid], animated=True, cmap="bwr", aspect='equal', vmin=-0.1, vmax=0.1,
                            origin='lower')
         t1 = axs[0].text(0, 0, str(self.n), color="black", fontsize=20)
 
-
+        plt.savefig(str(self.n) + ".png", dpi=150)
 
         # Also add in for the analytical solution
         # noinspection PyUnboundLocalVariable
@@ -200,8 +198,7 @@ class relaxed_poisson(object):
                 im_residual.set_array(self.pot_dist[:,:,zmid]-analytical[:,:,zmid])
                 fig.canvas.draw()
                 fig.canvas.flush_events()
-
-
+                plt.savefig(str(self.n) + ".png", dpi=150)
 
         if self.n > (self.max_n - 3):
             print("Failed to converge, sorry!")
@@ -492,10 +489,10 @@ class checkpoint(object):
         print("Do you just want to use some default settings? y/n")
         he_says = str(input())
         if he_says == "y":
-            rho = charge_generator([20,20,10]).point_charge(2) # 2, 1)
-            poisson = relaxed_poisson(0, rho, 1e-10, 10, int(10000e6))
+            rho = charge_generator([32,32,32]).charge_spread(1, 30, 0) # 2, 1)
+            poisson = relaxed_poisson(0, rho, 1e-10, 10000000, int(10000e6))
             # noinspection PyTypeChecker
-            poisson.run_sim_plot_point(10,0,None, 0.0001)
+            poisson.run_sim_plot_point(1,0,None, 0.001)
         if he_says == "n":
             pars = self.user_input()
             rho = charge_generator(pars[0]).charge_spread(*pars[1])

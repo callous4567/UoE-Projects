@@ -136,27 +136,29 @@ class relaxed_poisson(object):
         fig, axs = plt.subplots(nrows=1, ncols=3, figsize=(8,4))
 
         # Plot the electric field, also
-        field_vecs = magnetofield(self.pot_dist, zmid, self.boundary)
+        field_vecs = np.ones((2, shape[0], shape[1]))/np.sqrt(2)
         quiver = axs[0].quiver(coord_slice[0], coord_slice[1], field_vecs[0], field_vecs[1], color='black')
 
         # Plot the potential start
-        im = axs[0].imshow(self.pot_dist[:,:,zmid], animated=True, cmap="bwr", aspect='equal', vmin=-0.1, vmax=0.1, origin='lower')
+        im = axs[0].imshow(self.pot_dist[:,:,zmid], animated=True, cmap="bwr", aspect='equal', vmin=-1, vmax=1, origin='lower')
         t1 = axs[0].text(0, 0, str(self.n), color="black", fontsize=20)
 
 
         # Also add in for the analytical solution
         # noinspection PyUnboundLocalVariable
         quiver_analytic = axs[1].quiver(coord_slice[0], coord_slice[1], ana_field_vecs[0], ana_field_vecs[1], color='black')
-        im_analytic = axs[1].imshow(analytical[:,:,zmid], animated=True, cmap="bwr", aspect='equal', vmin=-0.1, vmax=0.1, origin='lower')
+        im_analytic = axs[1].imshow(analytical[:,:,zmid], animated=True, cmap="bwr", aspect='equal', vmin=-1, vmax=1, origin='lower')
         axs[1].text(0,0,"Analytic",color='black',fontsize=20)
 
         # Also plot some residuals
         im_residual = axs[2].imshow(self.pot_dist[:,:,zmid]-analytical[:,:,zmid], animated=True, cmap="bwr",
-                                    aspect='equal', vmin=-0.1, vmax=0.1, origin='lower')
+                                    aspect='equal', vmin=-1, vmax=1, origin='lower')
         axs[2].text(0,0,"Residual",color='black',fontsize=20)
 
         # Until it's converged. Keep track of the "last converge set" to check
         last_converge_pot = copy.copy(self.pot_dist)
+
+        plt.savefig(str(self.n) + ".png", dpi=150)
 
         # Iterate over. Terminate when new_converge_set near match to last, by fraction converge_frac
         while self.n < self.max_n:
@@ -189,6 +191,7 @@ class relaxed_poisson(object):
                 im_residual.set_array(self.pot_dist[:,:,zmid]-analytical[:,:,zmid])
                 fig.canvas.draw()
                 fig.canvas.flush_events()
+                plt.savefig(str(self.n) + ".png", dpi=150)
 
         if self.n > (self.max_n - 3):
             print("Failed to converge, sorry!")
@@ -515,10 +518,10 @@ class checkpoint(object):
         print("Do you just want to use some default settings? y/n")
         he_says = str(input())
         if he_says == "y":
-            rho = wire_generator([20, 20, 5]).wire_spread(1, 2, 0)
-            poisson = relaxed_poisson(0, rho, 1e-3, 10, int(10000e6))
+            rho = wire_generator([32, 32, 32]).wire_spread(2, 20, 1)
+            poisson = relaxed_poisson(0, rho, 1e-3, 1000000, int(10000e6))
             # noinspection PyTypeChecker
-            poisson.run_sim_plot_wires(10, 0, None, 0.01)
+            poisson.run_sim_plot_wires(1, 0, None, 0.01)
         else:
             pars = self.magnetic_user_input()
             rho = wire_generator(pars[0]).wire_spread(*pars[1])

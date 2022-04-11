@@ -69,6 +69,8 @@ class cahn(object):
         t1 = ax.text(1, 1, str(self.sweep), color="black", fontsize=20)
         ax.set_title(("f = {0:.1f}").format(free_energy(self.phimat, self.a, self.k, self.dx)))
 
+        plt.savefig(str(self.sweep) + ".png", dpi=150)
+
         while self.sweep < self.max_sweeps:
             self.fast_cahn()
             self.sweep += 1
@@ -78,7 +80,7 @@ class cahn(object):
                 t1.set_text(str(self.sweep))
                 fig.canvas.draw()
                 fig.canvas.flush_events()
-
+                plt.savefig(str(self.sweep) + ".png", dpi=150)
         # All done.
         plt.close()
 
