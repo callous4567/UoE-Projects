@@ -13,7 +13,7 @@ There's a function to create random charge distributions- pretty fun to play wit
 
 
 You can also create some neat plots to compare the simulation of a single wire to the actual analytical
-distribution, i.e.
+distribution, i.e the following. It's worth noting that the A-field simulation/numerical may differ- the coulomb gauge means these are two equivalent solutions though, given that the B-field phenomenology is the same (similar to how the electric potential differs due to a zero-point in C3_2.) 
 
 ![alt text](https://github.com/callous4567/UoE-Projects/blob/master/SimAndVis/C3_3/example_wireplot.png)
 
