@@ -12,3 +12,12 @@ Conway's Game of Life, with a few other miscellaneous metric tools (like calcula
 
 ## C2_2
 The SIRS Model of Epidemics, albeit not "true SIRS" since it only uses four nearest neighbours instead of eight (though implementing this would only necessitate a few line changes in fast_sirs.) 
+
+## C3
+The Cahn-Hilliard phase-separation model in 2D, powered by numba. Spinodal decomposition and the like are seen readily. There's options for free-energy evaluation.
+
+## C3_2
+Relaxation solver for the poisson equation- specifically modelled here to allow representation of electric fields and the like for fields of point charges (or arbitrary charge distributions, technically.) Jacobian relaxation, Gauss-Seidel, and Successively-Over-Relaxed implementation. Comparison tools/metrics for the analytical form are also contained. There's also options for staggered grids or distance-relaxed grids when calculating potentials/fields numerically from density distributions.
+
+## C3_3
+Same as C3_2, except in this case, we're considering a field of z-orientated wires, and modelling the z-axis magnetic potential (since the x-y components vanish) and subsequently calculating the x-y axis magnetic field. Basically identical except for that change. I've altered the boundary conditions, also, to make convergence a bit faster (given that we expect every x-y plane to be identical this is justified.)  
