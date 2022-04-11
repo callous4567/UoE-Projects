@@ -94,14 +94,12 @@ class cahn(object):
             free.append(free_energy(self.phimat, self.a, self.k, self.dx))
 
         # plot
-        sweep = [d*self.dt for d in sweep]
         fig, ax = plt.subplots(nrows=1, ncols=1)
-        ax.scatter(sweep, free, marker='x', color='red')
+        ax.scatter(sweep, free, marker='x', color='red', s=0.5)
         ax.set(xlabel=r'$t$',
                ylabel='f')
         ax.grid(which='major', color='pink')
-        plt.savefig("free-energy-test.png", dpi=300)
-
+        plt.savefig("free-energy-test_zero.png", dpi=300)
 
 # Class for handling user input (i.e. checkpoint.)
 class checkpoint(object):
