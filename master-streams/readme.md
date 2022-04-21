@@ -75,7 +75,4 @@ Hopefully you find this repository useful. If you're another student following t
 I hadn't a clue about stellar streams or anything else, and frankly I'm garbage with statistics. Nonetheless, I had fun,
 and hopefully my code will help you with whatever you are trying to do. 
 
-*I also submitted the thesis four days late. It would have been 3, BUT MY INTERNET FAILED LAST-SECOND! I ended up submitting it
-literally five seconds after the 3-day limit. Consequently, I only get 80% of the grade for it I would otherwise have had.*
 
-**Bit sad, but what can I say :(**
