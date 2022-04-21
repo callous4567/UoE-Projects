@@ -12,7 +12,7 @@ from matplotlib.patches import Patch
 import hdfutils
 import numpy as np
 import matplotlib.pyplot as plt
-from fast_cahn import fast_cahn, phitegrate, free_energy
+from fast_cahn import fast_cahn, phitegrate, free_energy, numpy_cahn
 
 
 # Cahn-Hilliard Equation Simulator. a=b in this case.
@@ -54,6 +54,10 @@ class cahn(object):
     def fast_cahn(self):
         self.phimat = fast_cahn(self.phimat, self.a, self.k, self.dx, self.dt, self.M)
 
+    # Iterate forward by one sweep using numpy (non-numba operations) instead
+    def numpy_cahn(self):
+        self.phimat = numpy_cahn(self.phimat, self.a, self.k, self.dx, self.dt, self.M)
+
     # Run the simulator graphically (plots the free energy/etc.)
     def run(self):
         # Interactive On
@@ -81,6 +85,36 @@ class cahn(object):
                 fig.canvas.draw()
                 fig.canvas.flush_events()
                 plt.savefig(str(self.sweep) + ".png", dpi=150)
+        # All done.
+        plt.close()
+
+    # Run but with numpy instead of fast
+    def run_numpy(self):
+        # Interactive On
+        plt.ion()
+
+        # Set up figure, axes, etc
+        fig, ax = plt.subplots(figsize=(8,8))
+        im = ax.imshow(self.phimat, animated=True, cmap="bwr", aspect='equal', vmin=-1, vmax=1)
+        ax.set(xlim=[0, self.nx - 1],
+               ylim=[0, self.nx - 1])
+
+        # Set text.
+        t1 = ax.text(1, 1, str(self.sweep), color="black", fontsize=20)
+        ax.set_title(("f = {0:.1f}").format(free_energy(self.phimat, self.a, self.k, self.dx)))
+
+        #plt.savefig(str(self.sweep) + ".png", dpi=150)
+
+        while self.sweep < self.max_sweeps:
+            self.numpy_cahn()
+            self.sweep += 1
+            if self.sweep % self.binrate == 0:
+                im.set_array(self.phimat)
+                ax.set_title(("f = {0:.1f}").format(free_energy(self.phimat, self.a, self.k, self.dx)))
+                t1.set_text(str(self.sweep))
+                fig.canvas.draw()
+                fig.canvas.flush_events()
+                #plt.savefig(str(self.sweep) + ".png", dpi=150)
         # All done.
         plt.close()
 
@@ -173,5 +207,4 @@ class checkpoint(object):
                             "If the error regards missing packages, please install them.\n")
             print(e)
 
-checkpoint().run()
 

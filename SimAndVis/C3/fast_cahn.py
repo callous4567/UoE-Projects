@@ -49,6 +49,31 @@ def mu(mat, a, k, dx):
     # Return the mumat
     return newmat
 
+# Evaluate using numpy.roll instead
+def numpy_mu(mat, a, k, dx):
+
+    """
+
+    Get the chemical potential abiding the equation
+    mu = -a(phi) + a(phi**3) - k(grad**2)phi
+    With centred laplacian
+
+    :param mat: Phi-matrix
+    :param a: see: ref. equation
+    :param k: see: ref. equation
+    :param dx: spatial discretization
+    :return: chemical potential matrix
+
+    """
+
+    # Define newmat
+    newmat = -a*(mat - mat**3) - k*(np.roll(mat, 1, 1) + np.roll(mat, 1, 0)
+                                            - 4*mat +
+                                            np.roll(mat, -1, 1) + np.roll(mat, -1, 0))/(dx**2)
+
+    # Return the mumat
+    return newmat
+
 # Iterate forward a phi matrix
 @njit(fastmath=True)
 def fast_cahn(mat, a, k, dx, dt, M):
@@ -83,6 +108,23 @@ def fast_cahn(mat, a, k, dx, dt, M):
             newmat[i, j] = mat[i,j] + const*(mumat[i, pbc(j + 1, ly)] + mumat[pbc(i + 1, lx), j]
                                              - 4 * mumat[i, j] +
                                              mumat[i, pbc(j - 1, ly)] + mumat[pbc(i - 1, lx), j])
+
+    # Return the newmat
+    return newmat
+
+# Iterate it forward but using np.roll (NOT WITH NUMBA!) just to benchmark speed/etc
+def numpy_cahn(mat, a, k, dx, dt, M):
+
+    # Generate the mumat for this mat
+    mumat = numpy_mu(mat, a, k, dx)
+
+    # Set up constant
+    const = M*dt/(dx**2)
+
+    # Define newmat
+    newmat = mat + const*(np.roll(mumat, 1, 1) + np.roll(mumat, 1, 0)
+                          - 4*mumat +
+                          np.roll(mumat, -1, 1) + np.roll(mumat, -1, 0))
 
     # Return the newmat
     return newmat
