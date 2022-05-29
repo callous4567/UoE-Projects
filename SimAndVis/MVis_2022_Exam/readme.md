@@ -6,7 +6,7 @@ the notorious correlation function calculation. See [here](https://www.youtube.c
 
 I've included three options. These include my default Python solution (2D with Numba, as standard) and also two Julia
 options- one with multiprocessing for plots and simulation in 3D (using SharedArrays) and one that just works single-threaded. The Julia
-renditions tend to be extremely fast with simulation (around 10-30 times faste) but questionable with plotting (I've only tested in 3D, and
+renditions tend to be extremely fast with simulation (around 10-30 times faster) but questionable with plotting (I've only tested in 3D, and
 Makie meshscatters are extremely inefficient- indeed most of the multiprocessing is put into handling plotting.) 
 
 ## Exam
