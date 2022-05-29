@@ -19,3 +19,7 @@ This class uses HDF5 and h5py to save data in a user-interpretable way- nice and
 ## xy_ising.py 
 
 Contains the code. Minimal working example including fast_xy, used purely to generate the videos above. You can take this, modify it, and make it a full piece like with twod_xy. 
+
+## Julia 
+
+Has a (several) Julia implementations, many times faster the Python rendition.
