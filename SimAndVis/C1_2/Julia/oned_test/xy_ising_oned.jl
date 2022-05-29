@@ -58,16 +58,7 @@ function plot()
 
 end 
 
-# Create a second process to handle the plots mid-run  
-using MPI
-MPI.Init()
 
-comm = MPI.COMM_WORLD
-rank = MPI.Comm_rank(comm)
-world_size = MPI.Comm_size(comm)
-print(world_size)
-
-"""
 # Animation function 
 for sweep in 0:_max_sweeps
 
@@ -87,4 +78,3 @@ for sweep in 0:_max_sweeps
     global _vec = fast_xy_oned.fast_onedangleglauber(_vec, _lx, _T) 
 
 end 
-"""
