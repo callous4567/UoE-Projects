@@ -19,6 +19,7 @@ The process needs to be ENTIRELY SELF CONTAINED for EACH TABLE: no calling exter
 Does covmonte for all data. 
 """
 
+
 # NOTE THAT WE'RE DEALING WITH COVARIANCE MATRICES! THE RESULTS FROM HEREON ARE IN PANDAS DATAFRAMES!!!
 # Grab groups/sets necessary
 groups = ascii_info.all_groups
@@ -26,7 +27,7 @@ astropysets = [ascii_info.set_raw for group in groups]
 pandasets = [ascii_info.panda_raw for group in groups]
 zipped = list(zip(groups, astropysets, pandasets))
 # Number of datapoints to generate errors over (higher=slower.) Final run has 500.
-windows_multiprocessing.n_monte = 1000
+windows_multiprocessing.n_monte = 200
 windows_multiprocessing.sourcecoord = "solar_info.dat"
 results = ["null"]
 # Regularly map/pool :)

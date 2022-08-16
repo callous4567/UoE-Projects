@@ -24,6 +24,7 @@ if __name__ == '__main__':
     pool.map(windows_multiprocessing.do_duplimonte_table, groupsetm_list)
     pool.close() """
 
+
 # The above, but for the fullgroup/set instead.
 m = ascii_info.duplimonte_number
 
@@ -35,7 +36,7 @@ for group in [ascii_info.fullgroup]:
 
 # Regularly map/pool :)
 if __name__ == '__main__':
-    pool = multiprocessing.Pool(6)
+    pool = multiprocessing.Pool(8)
     pool.map(windows_multiprocessing.do_duplimonte_table, groupsetm_list)
     pool.close()
 

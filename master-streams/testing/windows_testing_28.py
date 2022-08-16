@@ -1,23 +1,16 @@
 import os
 import pickle
+import time
 
+import numpy as np
 from matplotlib import pyplot as plt, rc
 from pandas import DataFrame
 
 import ascii_info
+import graphutils
 import hdfutils
 import windows_directories
 
-
-# Writer
-writer = hdfutils.hdf5_writer(windows_directories.datadir, ascii_info.asciiname)
-
-# Grab entropy table (final)
-entropy_table = writer.read_table("entropy_fit_witherrors", "per_cluster_haloonly")[['cluster','M_nfw','M_nfw_err']]
-
-entropy_pandas = entropy_table.to_pandas(index=False)
-entropy_pandas.to_latex(caption="placeholder",
-                        buf=windows_directories.imgdir + "\\per_cluster_haloonly.tex",
-                        label="tab:per_cluster_haloonly",
-                        float_format="%.2f",
-                        index=False)
+writer = hdfutils.hdf5_writer(windows_directories.lamodir, "lamodata.hdf5")
+final_table = writer.read_table("lamodata", "astrotable")
+print([not d for d in final_table['dr2_radial_velocity'].mask][0:4])

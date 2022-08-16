@@ -1,16 +1,12 @@
 import multiprocessing
 import warnings
-
+import windows_multiprocessing
 import ascii_info
 
 """
 This file will run clustering for all the individual duplimonte'd angulars we have and produce clustered lists (pickled)
 """
-"""
-We ignore the fact that error correlations/etc may be different for each source of data.
-"""
 
-import windows_multiprocessing
 # Suppress Loky Warnings
 warnings.filterwarnings("ignore", message="Loky-backed parallel loops cannot be called in a multiprocessing, setting n_jobs=1")
 
@@ -23,7 +19,7 @@ for saveid in ascii_info.duplimonte_saveids:
 # Regularly map/pool :)
 if __name__ == '__main__':
     pool = multiprocessing.Pool(8)
-    results = pool.map(windows_multiprocessing.do_hdbscan, arrayinfominpars)
+    results = pool.map(windows_multiprocessing.flatfork_do_hdbscan, arrayinfominpars)
     pool.close()
 
 

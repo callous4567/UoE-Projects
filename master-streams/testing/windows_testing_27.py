@@ -1,5 +1,4 @@
 from matplotlib import pyplot as plt, rc
-
 import ascii_info
 import hdfutils
 import windows_directories

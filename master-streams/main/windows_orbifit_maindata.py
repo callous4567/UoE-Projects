@@ -4,11 +4,9 @@ import os
 import time
 import warnings
 from pathlib import Path
-
 import pandas
 from astropy.table import Table
 from pandas import DataFrame
-
 import ascii_info, windows_directories
 from ascii_info import n_carlo, orbifit_saveids
 import pickle
@@ -117,36 +115,22 @@ if should_run == False: # False:
                                       [],[],[],\
                                       [],[],[],\
                                       [],[],[],\
-                                      [],[],[],
+                                      [],[],[]
 
-    # For cluster...
-    for clust_to_fit in clusters_to_orbifit:
+    # Run the pool!
+    pool = multiprocessing.Pool(8)
+    list_of_stats = pool.map(windows_multiprocessing.do_orbistatistics, clusters_to_orbifit)
+    pool.close()
 
-        # Specify savedir/savename and make path, for images
-        savedir = windows_directories.imgdir + "\\orbit_fitting_variables_maindata" + "\\" + str(clust_to_fit) + "_orbifit_maindata_run"
-        save_unique = str(clust_to_fit)
-        try:
-            os.mkdir(savedir)
-        except:
-            pass
+    # Iterate over the list of stats
+    for stats in list_of_stats:
 
-        # Get orbits for this cluster
-        orbits = []
-
-        # In n_carlo
-        for saveid in saveids:
-            # Load it
-            with open(windows_directories.orbitsfitdir + "\\" + group + "_" +
-                      saveid + "_fitted_orbit_maindata_" + str(clust_to_fit) + ".txt", "rb") as f:
-                clust_fitted = pickle.load(file=f)
-                orbits.append(clust_fitted)
-
-        # Run stats
+        # Section stats
         ees, meanee, stdee, \
         periggs, meanpg, stdpg, \
         EEs, meanEE, stdEE, \
         Lzs, meanLz, stdLz, \
-        apoggs, meanapog, stdapog = orbifit.orbistatistics(orbits, 0.3e9, 1000, savedir, save_unique)
+        apoggs, meanapog, stdapog = stats
 
         # Append the stats
         eesTT.append(ees), meaneeTT.append(meanee), stdeeTT.append(stdee), \
@@ -154,14 +138,6 @@ if should_run == False: # False:
         EEsTT.append(EEs), meanEETT.append(meanEE), stdEETT.append(stdEE), \
         LzsTT.append(Lzs), meanLzTT.append(meanLz), stdLzTT.append(stdLz), \
         apoggsTT.append(apoggs), meanapogTT.append(meanapog), stdapogTT.append(stdapog)
-
-        # Produce various plots
-        twod_graph = graphutils.twod_graph()
-        twod_graph.hist_fancy(ees, 10, "e", r'$\rho$', savedir + "\\" + str(clust_to_fit) + "_eccentricity")
-        twod_graph.hist_fancy(periggs, 10, "perigalacticon / kpc", r'$\rho$', savedir + "\\" + "perigalacticon")
-        twod_graph.hist_fancy(EEs, 10, "E / " + r'$\textrm{km}^2\textrm{s}^{-2}$', r'$\rho$', savedir + "\\" + str(clust_to_fit) + "_energy")
-        twod_graph.hist_fancy(Lzs, 10, "Lz /" + r'$\textrm{kpc}\textrm{kms}^{-1}$', r'$\rho$', savedir + "\\" + str(clust_to_fit) + "_Lz")
-        twod_graph.hist_fancy(apoggs, 10, "apogalacticon / kpc", r'$\rho$', savedir + "\\" + "apogalacticon")
 
     # Set up column data
     all_data = [clusters_to_orbifit,
@@ -171,7 +147,7 @@ if should_run == False: # False:
     colss = ['cluster',
              'e', 'peri', 'E', 'Lz', 'apo',
              'e_std', 'peri_std', 'E_std', 'Lz_std', 'apo_std',
-             'e_data', 'peri_data', 'E_data', 'Lz_data', 'apo_data', ]
+             'e_data', 'peri_data', 'E_data', 'Lz_data', 'apo_data']
 
     # All done- save the df
     df = DataFrame(columns=colss)
@@ -180,4 +156,4 @@ if should_run == False: # False:
 
 
     writer = hdfutils.hdf5_writer(windows_directories.datadir, ascii_info.asciiname)
-    writer.write_df("greatfit_monte_orbistatistics_maindata", "data", df)
+    writer.write_df("greatfit_monte_orbistatistics", "data", df)

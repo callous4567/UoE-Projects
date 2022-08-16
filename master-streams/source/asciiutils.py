@@ -1,9 +1,20 @@
+import csv
+import pickle
+import time
+
+import pandas as pd
+from astropy.io import fits
+from astroquery.gaia import Gaia
+
+import ascii_info
 import hdfutils
 import os
 import numpy as np
 from astropy.table import Table, vstack
 
 # Brief information on format of ASCII files.
+import windows_directories
+
 """
 First row is parameter space, semicolon ; delimited, with units in square brackets []. 
 - Open ASCII
@@ -72,6 +83,10 @@ class ascii_port(object):
         for num, column in enumerate(data_columns):
             data_table[header[num]] = column
 
+
+        # Add a column to the table for the source/etc (for later vstacking/etc.)
+        data_table['source'] = self.asciiname
+
         # Save table as self.
         self.table = data_table
 
@@ -116,13 +131,24 @@ class ascii_port(object):
             pass
         writer.write_table(hdfgroup, hdfset, self.table)
 
+    # Take an astropy table and write an ascii file (basically, the reverse! :D :D :D)
+    def write(self, table, labels):
+
+        # Clip table
+        table = table[labels]
+
+        # Write table
+        table.write(self.directory + "\\" + self.asciiname, format='ascii', overwrite=True)
 
 
 
-
-
-
-
-
-
-
+"""
+# Load Data
+table = hdfutils.hdf5_writer(windows_directories.datadir,
+                             ascii_info.asciiname).read_table(ascii_info.fullgroup,
+                                                              ascii_info.fullset)
+asciiwriter = ascii_port(windows_directories.datadir, "full_catalogue.txt")
+asciiwriter.write(table, ["x", "y", "z", "vx", "vy", "vz", "l", "b", "dist", "vlos", "dmu_l", "dmu_b", "edist",
+                          "evlost", "edmu_l", "edmu_b", "FeH", "Sgr Lambda", "Sgr Beta", "Belokurov Flag", "corrcoef",
+                          "source", "Lx", "Ly", "Lz", "L", "r", "theta", "phi", "dLx", "dLy", "dLz", "prelim_clust"]) 
+                          """

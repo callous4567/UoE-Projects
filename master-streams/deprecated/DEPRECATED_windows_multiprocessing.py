@@ -1,7 +1,10 @@
 import os
 import time
 import numpy as np
-from astropy.table import Table
+import scipy
+from astropy.table import vstack, Table
+from matplotlib import pyplot as plt
+from numpy import argmin
 import pickle
 import ascii_info
 import energistics
@@ -103,6 +106,92 @@ def do_duplimonte_table(groupsetm):
         with open(windows_directories.duplimontedir + "\\" + group + "\\" + savedex, 'wb') as f:
             pickle.dump(column, f)
 
+
+# TODO: DEPRECATED
+#def do_dbstest(paramarray):
+    """
+    Example clustering processing to try and guess good DBS parameters for the circle fitting.
+    """
+    #writer = hdfutils.hdf5_writer(windows_directories.datadir, ascii_info.asciiname)
+    #full_data = writer.read_table(ascii_info.fullgroup, ascii_info.fullset)
+    #cluster = galcentricutils.cluster()
+    cluster.dbs(full_data, *paramarray)
+
+"""
+Basic multi-processed KMeans routine for great circle counts, 
+- generate grid in theta/phi 
+- great circle count each grid
+- kmeans each great circle table 
+- get a score for how good the kmeans is 
+- save html for each great circle plot alongside returning the GCC parameter and GCC score 
+- decide a score to use: there's sklearn score default, etc.
+"""
+# Deprecated
+def do_clustering(vararray):
+    tableinfo, gcc_params, clustering_params = vararray
+    writer = hdfutils.hdf5_writer(windows_directories.datadir, ascii_info.asciiname)
+    table = writer.read_table(*tableinfo)
+    # Great Circle the table
+    table = galcentricutils.greatcount().gcc_table(table, *gcc_params)
+    # Cluster the table
+    clustered_table = galcentricutils.cluster().gaussmix(table,*clustering_params)
+# Deprecated.
+def do_gaussaicsbics(vararray):
+    tableinfo, gcc_params, clustering_params = vararray
+    writer = hdfutils.hdf5_writer(windows_directories.datadir, ascii_info.asciiname)
+    table = writer.read_table(*tableinfo)
+    table = galcentricutils.greatcount().gcc_table(table, *gcc_params)
+    galcentricutils.cluster().gaussaicsbics(table,*clustering_params)
+
+# Various confidence map routines for multiprocessing
+"""
+Feed dataset information in alongside other info below: apply bonferroni correction, too (see: notes.) 
+Take a given pole from the grid, its nphi, and the number of phi regions, and a probability P
+Split the GCC generated from this point into the nphi regions
+Get the significance of each region using scipy binomial CDF and require it to be less than the bon-corrected lim
+Select the lowest significance for this GCC: use this for the final feed-back (maximum confidence = min significance)
+Feed back a "True" or "False" alongside the raw calculated CDF for each pole, then save the final result. 
+We're using the standard "alpha=0.05" as is typical in statistics for this confidence testing kinda thing
+"""
+# Note that P is the microscopic probability for each segment of getting a star
+# group, set, theta, phi, dtheta, radmin, n_phi, P = vararray
+# tableinfo, gccsplit_params, P = vararray
+def do_gccsplit_confidence(vararray):
+    # Get data
+    tableinfo, gccsplit_params, P, savedex = vararray
+    writer = hdfutils.hdf5_writer(windows_directories.datadir, ascii_info.asciiname)
+    table = writer.read_table(*tableinfo)
+
+    # Split table up into nphi regions
+    theta, phi, index, dtheta, radmin, n_phi = gccsplit_params
+    splittables, radnumber = galcentricutils.greatcount().gcc_splittable(table, theta, phi, dtheta, radmin, n_phi)
+
+    """
+    # Debugging code.
+    for num, splittable in enumerate(splittables):
+        splittable['k_index'] = [num for d in splittable['x']]
+    mastersplit = vstack(splittables)
+    graphutils.threed_graph().xmeans_L(mastersplit, savedex, True) """
+
+    sigs = []
+    # For each region get the significance
+    for splittable in splittables:
+        n = len(splittable)
+        cdf = scipy.stats.binom.cdf(k=n, n=radnumber, p=P) # below n, not above
+        sig = 1 - cdf
+        sigs.append(sig)
+
+    # Get the (n) for the phi_region that gives minimum significance/maximum confidence
+    minsig = argmin(sigs)
+    n_of_splittable_for_minsig = len(splittables[minsig])
+
+    # Pick the minimum significance / maximum confidence (uncorrected)
+    minsig = min(sigs)
+
+
+    # Return maximum significance for this point.thetas, phis, indices, sigmins = results
+    return [theta, phi, index, n_of_splittable_for_minsig, minsig]
+
 def do_hdbscan(arrayinfominpar):
     """
 
@@ -125,6 +214,7 @@ def do_hdbscan(arrayinfominpar):
     # Generate a HTML for this clustering under imgdir\\ + "kmeans_html\\duplimonte_kmeanshtml\\" + group_saveid.html
     savedexdir = "kmeans_html\\duplimonte_kmeanshtml\\" + arrayinfo[0] + "\\" + arrayinfo[1]
     graphutils.threed_graph().kmeans_L_array(data, clustered, savedexdir, False)
+
 
 def flatfork_do_hdbscan(arrayinfominpar):
 
@@ -392,7 +482,6 @@ def do_monte_table(table):
     return table
 
 # Fit an orbit with the energistics orbifitter using Galpy, then save the fit, for the Monte-Carlo Data Iterations
-# Uses membership table
 def do_orbifit(parameters):
     import energistics
 
@@ -413,58 +502,6 @@ def do_orbifit(parameters):
         # Save it
         with open(windows_directories.orbitsfitdir + "\\" + arrayinfo[0] + "_" +
                   arrayinfo[1] + "_fitted_orbit_" + str(clust_to_fit) + ".txt", "wb") as f:
-            pickle.dump(obj=clust_fitted, file=f)
-
-# Do the preliminary fit for flatfork_do_orbifit
-def flatfork_do_preliminary(parameters):
-
-    import energistics
-
-    # Set up parameters and clusters_to_cluster
-    arrayinfo, table, clusters_to_cluster, iterations, time_to_integrate, number_of_steps = parameters
-
-    # Set up the fitter
-    fitter = energistics.orbifitter()
-
-    # For each cluster to cluster
-    for clust_to_fit in clusters_to_cluster:
-
-        # Run fit
-        clust_fitted = fitter.flatfork_galpy_final_preliminary(table, clust_to_fit, iterations, time_to_integrate,
-                                                  number_of_steps, try_load=True, graph=False,
-                                                  load_fit=False, try_save=False, debug_graph=None)
-
-# Fit an orbit with the energistics orbifitter using Galpy, then save the fit, for the Monte-Carlo Data Iterations
-# Uses membership table
-def flatfork_do_orbifit(parameters):
-
-    """
-    Fit an orbit with the energistics orbifitter using Galpy, then save the fit, for the Monte-Carlo Data Iterations
-        - Uses membership table
-
-    :param parameters: arrayinfo, table, clusters_to_cluster, iterations, time_to_integrate, number_of_steps = parameters
-    :return: pickle-dump
-    """
-
-    import energistics
-
-    # Set up parameters and clusters_to_cluster
-    arrayinfo, table, clusters_to_cluster, iterations, time_to_integrate, number_of_steps = parameters
-
-    # Set up the fitter
-    fitter = energistics.orbifitter()
-
-    # For each cluster to cluster
-    for clust_to_fit in clusters_to_cluster:
-
-        # Run fit
-        clust_fitted = fitter.flatfork_galpy_final_fitting(table, clust_to_fit, iterations, time_to_integrate,
-                                                  number_of_steps, try_load=True, graph=False,
-                                                  load_fit=False, try_save=False, debug_graph=None)
-
-        # Save it
-        with open(windows_directories.orbitsfitdir + "\\" + arrayinfo[0] + "_" +
-                  arrayinfo[1] + "_flatfork_fitted_orbit_" + str(clust_to_fit) + ".txt", "wb") as f:
             pickle.dump(obj=clust_fitted, file=f)
 
 # Fit an orbit with the energistics orbifitter using Galpy, then save the fit, for the Monte-Carlo Data Iterations
@@ -516,9 +553,9 @@ def flatfork_do_orbifit_maindata(parameters):
     # For each cluster to cluster
     for clust_to_fit in clusters_to_cluster:
 
-        # Run fit. Avoid saving until you have finalised the maindata clustering.
+        # Run fit TODO: Flatfork this bit.
         clust_fitted = fitter.flatfork_galpy_fitting_nomemb(table, clustered, clust_to_fit, iterations, time_to_integrate,
-                                                   number_of_steps, try_load=False, graph=False,
+                                                   number_of_steps, try_load=True, graph=False,
                                                    load_fit=False, try_save=False,
                                                    extra_text="flatfork_orbifit_maindata_run")
 
@@ -527,71 +564,7 @@ def flatfork_do_orbifit_maindata(parameters):
                   arrayinfo[1] + "_flatfork_fitted_orbit_maindata_" + str(clust_to_fit) + ".txt", "wb") as f:
             pickle.dump(obj=clust_fitted, file=f)
 
-def maindata_do_orbistatistics(clust_to_fit):
-
-    """
-
-    Run orbistatistics for a given cluster with maindata
-
-    :param clust_to_fit: Which cluster to run orbistatistics for
-    :return: stats (see windows_orbifit_maindata)
-
-    """
-
-    # The fitter
-    from energistics import orbifitter
-    orbifit = orbifitter()
-
-    # Specify savedir/savename and make path, for images
-    savedir = os.path.join(os.path.join(windows_directories.imgdir,"orbit_fitting_variables_maindata"),str(clust_to_fit) + "_orbifit_maindata_run")
-    save_unique = str(clust_to_fit)
-    try:
-        os.mkdir(savedir)
-    except:
-        pass
-
-    # Get orbits for this cluster
-    orbits = []
-
-    # In n_carlo
-    group = ascii_info.fullgroup
-    for saveid in ascii_info.flatfork_orbifit_maindata_saveids:
-
-        # Load it
-        with open(windows_directories.orbitsfitdir + "\\" + group + "_" +
-                  saveid + "_fitted_orbit_maindata_" + str(clust_to_fit) + ".txt", "rb") as f:
-            clust_fitted = pickle.load(file=f)
-            orbits.append(clust_fitted)
-
-    # Run stats
-    stats = orbifit.orbistatistics(orbits, 0.3e9, 1000, savedir, save_unique)
-    ees, meanee, stdee, \
-    periggs, meanpg, stdpg, \
-    EEs, meanEE, stdEE, \
-    Lzs, meanLz, stdLz, \
-    apoggs, meanapog, stdapog = stats
-
-    # Produce various plots
-    twod_graph = graphutils.twod_graph()
-    twod_graph.hist_fancy(ees, 10, "e", r'$\rho$', savedir + "\\" + str(clust_to_fit) + "_eccentricity")
-    twod_graph.hist_fancy(periggs, 10, "perigalacticon / kpc", r'$\rho$', savedir + "\\" + "perigalacticon")
-    twod_graph.hist_fancy(EEs, 10, "E / " + r'$\textrm{km}^2\textrm{s}^{-2}$', r'$\rho$', savedir + "\\" + str(clust_to_fit) + "_energy")
-    twod_graph.hist_fancy(Lzs, 10, "Lz /" + r'$\textrm{kpc}\textrm{kms}^{-1}$', r'$\rho$', savedir + "\\" + str(clust_to_fit) + "_Lz")
-    twod_graph.hist_fancy(apoggs, 10, "apogalacticon / kpc", r'$\rho$', savedir + "\\" + "apogalacticon")
-
-    # Return the stats
-    return stats
-
-def flatfork_maindata_do_orbistatistics(clust_to_fit):
-
-    """
-
-    Run orbistatistics for a given cluster with maindata
-
-    :param clust_to_fit: Which cluster to run orbistatistics for
-    :return: stats (see windows_orbifit_maindata)
-
-    """
+def flatfork_do_orbistatistics(clust_to_fit):
 
     # The fitter
     from energistics import orbifitter
@@ -636,184 +609,6 @@ def flatfork_maindata_do_orbistatistics(clust_to_fit):
 
     # Return the stats
     return stats
-
-def do_orbistatistics(clust_to_fit):
-    """
-
-    Run orbistatistics for a given cluster with memberpercent greatcircle data
-
-    :param clust_to_fit: Which cluster to run orbistatistics for
-    :return: stats (see windows_orbifit_arti..._greatcount)
-
-    """
-
-    # The fitter
-    from energistics import orbifitter
-    orbifit = orbifitter()
-
-    # Specify savedir/savename and make path, for images
-    savedir = windows_directories.imgdir + "\\orbit_fitting_variables" + "\\" + str(clust_to_fit)
-    save_unique = str(clust_to_fit)
-    try:
-        os.mkdir(savedir)
-    except:
-        pass
-
-    # Get orbits for this cluster
-    orbits = []
-
-    # In n_carlo
-    group = ascii_info.fullgroup
-    saveids = ascii_info.orbifit_saveids
-
-    for saveid in saveids:
-
-        # Load it
-        with open(windows_directories.orbitsfitdir + "\\" + group + "_" +
-                  saveid + "_fitted_orbit_" + str(clust_to_fit) + ".txt", "rb") as f:
-            clust_fitted = pickle.load(file=f)
-            orbits.append(clust_fitted)
-
-    # Run stats
-    stats = orbifit.orbistatistics(orbits, 0.3e9, 1000, savedir, save_unique)
-    ees, meanee, stdee, \
-    periggs, meanpg, stdpg, \
-    EEs, meanEE, stdEE, \
-    Lzs, meanLz, stdLz, \
-    apoggs, meanapog, stdapog = stats
-
-    # Produce various plots
-    twod_graph = graphutils.twod_graph()
-    twod_graph.hist_fancy(ees, 10, "e", r'$\rho$', savedir + "\\" + str(clust_to_fit) + "_eccentricity")
-    twod_graph.hist_fancy(periggs, 10, "perigalacticon / kpc", r'$\rho$', savedir + "\\" + "perigalacticon")
-    twod_graph.hist_fancy(EEs, 10, "E / " + r'$\textrm{km}^2\textrm{s}^{-2}$', r'$\rho$',
-                          savedir + "\\" + str(clust_to_fit) + "_energy")
-    twod_graph.hist_fancy(Lzs, 10, "Lz /" + r'$\textrm{kpc}\textrm{kms}^{-1}$', r'$\rho$',
-                          savedir + "\\" + str(clust_to_fit) + "_Lz")
-    twod_graph.hist_fancy(apoggs, 10, "apogalacticon / kpc", r'$\rho$', savedir + "\\" + "apogalacticon")
-
-    # Return the stats
-    return stats
-
-def flatfork_do_orbistatistics(clust_to_fit):
-    """
-
-    Run orbistatistics for a given cluster with memberpercent greatcircle data
-
-    :param clust_to_fit: Which cluster to run orbistatistics for
-    :return: stats (see windows_orbifit_arti..._greatcount)
-
-    """
-
-    # The fitter
-    from energistics import orbifitter
-    orbifit = orbifitter()
-
-    # Specify savedir/savename and make path, for images
-    savedir = windows_directories.imgdir + "\\flatfork_orbit_fitting_variables" + "\\" + str(clust_to_fit)
-    save_unique = str(clust_to_fit)
-    try:
-        os.mkdir(savedir)
-    except:
-        pass
-
-    # Get orbits for this cluster
-    orbits = []
-
-    # In n_carlo
-    group = ascii_info.fullgroup
-    saveids = ascii_info.orbifit_saveids
-
-    for saveid in saveids:
-
-        # Load it
-        with open(windows_directories.orbitsfitdir + "\\" + group + "_" +
-                  saveid + "_flatfork_fitted_orbit_" + str(clust_to_fit) + ".txt", "rb") as f:
-            clust_fitted = pickle.load(file=f)
-            orbits.append(clust_fitted)
-
-    # Run stats
-    stats = orbifit.orbistatistics(orbits, 0.3e9, 1000, savedir, save_unique)
-    ees, meanee, stdee, \
-    periggs, meanpg, stdpg, \
-    EEs, meanEE, stdEE, \
-    Lzs, meanLz, stdLz, \
-    apoggs, meanapog, stdapog = stats
-
-    # Produce various plots
-    twod_graph = graphutils.twod_graph()
-    twod_graph.hist_fancy(ees, 10, "e", r'$\rho$', savedir + "\\" + str(clust_to_fit) + "_eccentricity")
-    twod_graph.hist_fancy(periggs, 10, "perigalacticon / kpc", r'$\rho$', savedir + "\\" + "perigalacticon")
-    twod_graph.hist_fancy(EEs, 10, "E / " + r'$\textrm{km}^2\textrm{s}^{-2}$', r'$\rho$',
-                          savedir + "\\" + str(clust_to_fit) + "_energy")
-    twod_graph.hist_fancy(Lzs, 10, "Lz /" + r'$\textrm{kpc}\textrm{kms}^{-1}$', r'$\rho$',
-                          savedir + "\\" + str(clust_to_fit) + "_Lz")
-    twod_graph.hist_fancy(apoggs, 10, "apogalacticon / kpc", r'$\rho$', savedir + "\\" + "apogalacticon")
-
-    # Return the stats
-    return stats
-
-def flatfork_greatcircle_optimize(parameterss):
-
-    real_dist, which_try, table_included, clustered_included, pole_thetas, pole_phis, resolution = parameterss
-
-    greatfit = galcentricutils.greatfit()
-
-    # Little catching specification for specific clusters (to allow specification on real_dist per-cluster.)
-    real_dist_local = real_dist
-
-    # In this case, just do least-squares minimization
-    if real_dist_local == True:
-
-        least_squares = []
-
-        for theta_pole, phi_pole in zip(pole_thetas, pole_phis):
-            leastsq = greatfit.least_squares(table_included['theta'], table_included['phi'], theta_pole, phi_pole,
-                                             resolution, real_dist_local)
-            least_squares.append(leastsq)
-
-        best_circle = np.argmin(least_squares)
-        best_circle = np.array([pole_thetas[best_circle], pole_phis[best_circle]])
-
-
-    # In this case, maximize the number of stars within real_dist of a greatcircle
-    else:
-
-        least_squares = []
-
-        for theta_pole, phi_pole in zip(pole_thetas, pole_phis):
-            leastsq = greatfit.least_squares(table_included['theta'], table_included['phi'], theta_pole, phi_pole,
-                                             resolution, real_dist_local)
-            least_squares.append(leastsq)
-
-        best_circle = np.argmax(
-            least_squares)  # argmax, to mamimize the membership of these cluster members (using a real_dist- see greatfit.least_squares())
-        best_circle = np.array([pole_thetas[best_circle], pole_phis[best_circle]])
-
-    # Take best_circle and obtain the width of the GCC (i.e. get the maximum distance, on the sky, from the GCC.
-    std_dist, max_dist = greatfit.deviation_from_gc(table_included['theta'], table_included['phi'], best_circle[0],
-                                                    best_circle[1], resolution)
-
-    pole_stdev = np.rad2deg(std_dist)
-    pole_maxdist = np.rad2deg(max_dist)
-
-    # Go forth and plot the greatcircle against the data, in ra/dec.
-    try:
-        graphutils.spec_graph().clust_thetaphi(table=table_included, clustering=clustered_included,
-                                               cluster_id=which_try,
-                                               vasiliev=False, savedexdir="flatfork_greatcount_beforeMC_" +
-                                                                          str(which_try) + "_thetaphi_greatcircle",
-                                               gcc_thetaphis=greatfit.gcc_gen(1000, *best_circle),
-                                               flatfork=True)
-        import matplotlib.pyplot as plt
-        plt.close()
-        plt.clf()
-    except Exception as e:
-        print(e)
-        pass
-
-    # Return
-    return best_circle, pole_stdev, pole_maxdist
 
 # Factor by which to multiply max_clust_size of the GSE (to prevent central clumps being caught by GSE.)
 massive_factor = 1.1

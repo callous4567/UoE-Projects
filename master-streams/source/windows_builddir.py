@@ -12,6 +12,9 @@ class dirbuilder(object):
         self.clustdir()
         self.orbidir()
         self.orbidebugdir()
+        self.flatfork_duplimonte_kmeanshtmldir()
+        self.vasidir()
+        self.flatfork_vasidir()
 
     # Build directory for building image/data directories
     def datimgdir(self):
@@ -66,6 +69,31 @@ class dirbuilder(object):
         except:
             pass
 
+    # Build the flatfork rendition too
+    def flatfork_duplimonte_kmeanshtmldir(self):
+        try:
+            os.mkdir(imgdir + "\\flatfork_kmeans_html")
+        except:
+            pass
+        try:
+            os.mkdir(imgdir + "\\flatfork_xmeans_html")
+        except:
+            pass
+        for group in ascii_info.all_groups:
+            try:
+                try:
+                    os.mkdir(imgdir + "\\flatfork_kmeans_html" + "\\duplimonte_kmeanshtml\\")
+                except:
+                    pass
+                os.mkdir(imgdir + "\\flatfork_kmeans_html" + "\\duplimonte_kmeanshtml\\" + group)
+            except Exception as e:
+                pass
+        # and the full one
+        try:
+            os.mkdir(imgdir + "\\flatfork_kmeans_html" + "\\duplimonte_kmeanshtml\\" + ascii_info.fullgroup)
+        except:
+            pass
+
     # Build cluster dir
     def clustdir(self):
         try:
@@ -99,5 +127,16 @@ class dirbuilder(object):
         except:
             pass
 
+    # Vasiliev dir
+    def vasidir(self):
+        try:
+            os.mkdir(os.path.join(windows_directories.imgdir, "vasiliev"))
+        except:
+            pass
 
-dirbuilder()
+    # Vasiliev dir
+    def flatfork_vasidir(self):
+        try:
+            os.mkdir(os.path.join(windows_directories.imgdir, "flatfork_vasiliev"))
+        except:
+            pass

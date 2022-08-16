@@ -12,7 +12,7 @@ from astropy import units as u
 
 # Our own stuff.
 import ascii_info
-from galpy.util import bovy_coords
+from galpy.util import coords
 from matplotlib.patches import Patch
 
 import galcentricutils
@@ -98,8 +98,7 @@ class twod_graph(object):
         axs[1].set(xlabel=r'$10^3$' + " kpc km/s")
         axs[0].set(ylabel=r'$10^3$' + " kpc km/s")
 
-        plt.savefig(windows_directories.imgdir + "\\test.png", dpi=300)
-        plt.savefig(windows_directories.imgdir + "\\tripL.pgf")
+        plt.savefig(windows_directories.imgdir + "\\test.png", dpi=300, transparent="True", pad_inches=0.1)
         plt.show()
 
     # With colours
@@ -164,7 +163,7 @@ class twod_graph(object):
         axs[0].set(ylabel=r'$10^3$' + " kpc km/s")
 
         if savepath != None:
-            plt.savefig(savepath, dpi=300)
+            plt.savefig(savepath, dpi=300, transparent=True)
         else:
             plt.show()
 
@@ -470,7 +469,7 @@ class threed_graph(object):
             fig.show()
 
     # Given a set of theta,phi plot on the unit sphere in 3D for browser. "Colours" are optional.
-    def unitsphere(self, thetas, phis, colours):
+    def unitsphere(self, thetas, phis, colours=False):
         pos = lambda theta, phi: np.array([np.sin(theta)*np.cos(phi),
                                            np.sin(theta)*np.sin(phi),
                                            np.cos(theta)])
@@ -495,6 +494,22 @@ class threed_graph(object):
 
     # Except it takes arrays. Savedexdir here should be the directory\\savename
     def kmeans_L_array(self, array, clusterdata, savedexdir, browser, outliers=False):
+        """
+        Important note: savedexdir is used via...
+
+            save_loc = os.path.join(windows_directories.imgdir,savedexdir + ".html")
+            fig.write_html(save_loc)
+
+        So, as long as you make the directory after imgdir, you can include directories in savedexdir.
+
+        :param array: array, rows w/ 3 columns LxLyLz
+        :param clusterdata: array, int
+        :param savedexdir: path after imgdir
+        :param browser: bool
+        :param outliers: bool
+        :return:
+        """
+
         # Need arrays. Make sure.
         if type(array) != "numpy.ndarray":
             array = np.array(array)
@@ -640,7 +655,11 @@ class spec_graph(object):
     Set vasiliev to True to display his Sgr_snapshot (with LMC.) 
     optionally supply gcc_radecs = [[ras],[decs]] with greatcircle radecs
     """
-    def clust_radec(self, table, clustering, cluster_id=False, vasiliev=False, savedexdir=None, gcc_radecs=None, lb=False):
+    def clust_radec(self, table, clustering,
+                    cluster_id=False, vasiliev=False,
+                    savedexdir=None, gcc_radecs=None,
+                    lb=False,
+                    flatfork=False):
         if cluster_id is False:
             # Get the n0 of clusters
             nclust = np.max(clustering) + 1
@@ -659,10 +678,16 @@ class spec_graph(object):
                 if lb == False:
                     tab_x, tab_y = sim_table['ra'], sim_table['dec']
                     axs.scatter(tab_x, tab_y, color="gray", s=0.01, marker=".")
+                    # Set limits
+                    axs.set(xlim=[np.min(tab_x), np.max(tab_x)],
+                            ylim=[np.min(tab_y), np.max(tab_y)])
                 elif lb == True:
-                    l, b = bovy_coords.radec_to_lb(sim_table['ra'], sim_table['dec'], degree=True).T
+                    l, b = coords.radec_to_lb(sim_table['ra'], sim_table['dec'], degree=True).T
                     l = [d - 360 if d > 180 else d for d in l]
                     axs.scatter(l, b, color="gray", s=0.01, marker=".")
+                    # Set limits
+                    axs.set(xlim=[np.min(l), np.max(l)],
+                            ylim=[np.min(b), np.max(b)])
 
             # Sort table by clustering
             table = galcentricutils.galconversion().nowrite_GAL_to_ICRS(table)
@@ -702,7 +727,7 @@ class spec_graph(object):
                     axs.set(xlim=[np.min(tab_x), np.max(tab_x)],
                             ylim=[np.min(tab_y), np.max(tab_y)])
                 elif lb == True:
-                    l, b = bovy_coords.radec_to_lb(sorted_table['ra'], sorted_table['dec'], degree=True).T
+                    l, b = coords.radec_to_lb(sorted_table['ra'], sorted_table['dec'], degree=True).T
                     l = [d - 360 if d > 180 else d for d in l]
                     axs.scatter(l, b, color="gray", s=0.01, marker=".")
                     # Set limits
@@ -725,92 +750,102 @@ class spec_graph(object):
                 axs.set(xlabel=" l / deg", ylabel="b / deg")
 
             # Create save directory/save
-            if savedexdir != None:
-                try:
-                    os.mkdir(windows_directories.imgdir + "\\" + "vasiliev")
-                except:
-                    pass
-                plt.savefig(windows_directories.imgdir + "\\" + "vasiliev"+ "\\" + savedexdir + ".png", dpi=300)
-            # Show
-            #plt.show()
+            if savedexdir != None and flatfork == False:
+                plt.savefig(os.path.join(windows_directories.imgdir + "\\" + "vasiliev",savedexdir + ".png"), dpi=300)
+            if savedexdir != None and flatfork == True:
+                plt.savefig(os.path.join(windows_directories.imgdir + "\\" + "flatfork_vasiliev",savedexdir + ".png"), dpi=300)
+
+            plt.close()
+            plt.clf()
 
         else:
-            # Grab the ra/dec list for the cluster_id
-            table['cluster'] = clustering
-            table_by_clust = table.group_by("cluster")
-            clustmask = table_by_clust.groups.keys["cluster"] == cluster_id
-            masked_table = table_by_clust.groups[clustmask]
+            try:
+                # Grab the ra/dec list for the cluster_id
+                table['cluster'] = clustering
+                table_by_clust = table.group_by("cluster")
+                clustmask = table_by_clust.groups.keys["cluster"] == cluster_id
+                masked_table = table_by_clust.groups[clustmask]
 
-            # ICRS-up the thing and do the plot...
-            fig, axs = plt.subplots(nrows=1, ncols=1, dpi=300)
-            # first do Vasilievs, though.
-            legend_elements = []
-            if vasiliev==True:
-                legend_elements.append(Patch(edgecolor='white',facecolor='gray',label="Tango for 3"))
-                simdir = windows_directories.datadir + "\\vasiliev\\Sgr_snapshot"
-                simfile = "simdata.hdf5"
-                writer = hdfutils.hdf5_writer(simdir, simfile)
-                sim_table = writer.read_table("Sgr_snapshot", "astrotable")
+                # ICRS-up the thing and do the plot...
+                fig, axs = plt.subplots(nrows=1, ncols=1, dpi=300)
+                # first do Vasilievs, though.
+                legend_elements = []
+                if vasiliev==True:
+                    legend_elements.append(Patch(edgecolor='white',facecolor='gray',label="Tango for 3"))
+                    simdir = windows_directories.datadir + "\\vasiliev\\Sgr_snapshot"
+                    simfile = "simdata.hdf5"
+                    writer = hdfutils.hdf5_writer(simdir, simfile)
+                    sim_table = writer.read_table("Sgr_snapshot", "astrotable")
+                    if lb == False:
+                        tab_x, tab_y = sim_table['ra'], sim_table['dec']
+                        axs.scatter(tab_x, tab_y, color="gray", s=0.01, marker=".")
+                    elif lb == True:
+                        l, b = coords.radec_to_lb(sim_table['ra'], sim_table['dec'], degree=True).T
+                        l = [d - 360 if d > 180 else d for d in l]
+                        axs.scatter(l, b, color="gray", s=0.01, marker=".")
+
+                # We can also add a great circle (though this necessitates a legend.)
+                if gcc_radecs != None:
+                    if lb == False:
+                        gccras, gccdecs = gcc_radecs
+                        axs.scatter(gccras, gccdecs, color="blue", s=0.1)
+                    elif lb == True:
+                        gccras, gccdecs = gcc_radecs
+                        l, b = coords.radec_to_lb(gccras, gccdecs, degree=True).T
+                        axs.scatter(l, b, color="blue", s=0.1)
+                    legend_elements.append(Patch(edgecolor='white', facecolor='blue', label='GCC Fit'))
+
+                # Then our clustering...
+                masked_table = galcentricutils.galconversion().nowrite_GAL_to_ICRS(masked_table)
+
                 if lb == False:
-                    tab_x, tab_y = sim_table['ra'], sim_table['dec']
-                    axs.scatter(tab_x, tab_y, color="gray", s=0.01, marker=".")
+                    tab_x, tab_y = masked_table['ra'], masked_table['dec']
+                    axs.scatter(tab_x, tab_y, s=5, marker="s", color='red')
+
+                    # Set limits
+                    axs.set(xlim=[np.min(tab_x), np.max(tab_x)],
+                            ylim=[np.min(tab_y), np.max(tab_y)])
+
+
                 elif lb == True:
-                    l, b = bovy_coords.radec_to_lb(sim_table['ra'], sim_table['dec'], degree=True).T
+                    l, b = coords.radec_to_lb(masked_table['ra'], masked_table['dec'], degree=True).T
                     l = [d - 360 if d > 180 else d for d in l]
-                    axs.scatter(l, b, color="gray", s=0.01, marker=".")
+                    axs.scatter(l, b, color="red", s=1, marker="o")
+                    # Set limits
+                    axs.set(xlim=[np.min(l), np.max(l)],
+                            ylim=[np.min(b), np.max(b)])
 
-            # We can also add a great circle (though this necessitates a legend.)
-            if gcc_radecs != None:
+                axs.grid(True, which='major', alpha=1, linewidth=0.25, color="black")  # Enable grids on subplot
+                axs.grid(True, which='minor', alpha=1, linewidth=0.25, color="black")
+                legend_elements.append(Patch(edgecolor='white',
+                                             facecolor='red',
+                                             label="Stars"))
+
+                plt.legend(loc='upper right', handles=legend_elements)
+                axs.set_facecolor("k")
                 if lb == False:
-                    gccras, gccdecs = gcc_radecs
-                    axs.scatter(gccras, gccdecs, color="blue", s=0.1)
+                    axs.set(xlabel=r'$\alpha$' + " / deg", ylabel=r'$\delta$' + " / deg")
                 elif lb == True:
-                    gccras, gccdecs = gcc_radecs
-                    l, b = bovy_coords.radec_to_lb(gccras, gccdecs, degree=True).T
-                    axs.scatter(l, b, color="blue", s=0.1)
-                legend_elements.append(Patch(edgecolor='white', facecolor='blue', label='GCC Fit'))
+                    axs.set(xlabel=" l / deg", ylabel="b / deg")
+                axs.grid(color="white")
+                plt.gca().invert_xaxis()
 
-            # Then our clustering...
-            masked_table = galcentricutils.galconversion().nowrite_GAL_to_ICRS(masked_table)
+                # Create save directory/save
+                if savedexdir != None and flatfork == False:
+                    plt.savefig(os.path.join(windows_directories.imgdir + "\\" + "vasiliev", savedexdir + ".png"),
+                                dpi=300)
+                if savedexdir != None and flatfork == True:
+                    plt.savefig(
+                        os.path.join(windows_directories.imgdir + "\\" + "flatfork_vasiliev", savedexdir + ".png"),
+                        dpi=300)
 
-            if lb == False:
-                tab_x, tab_y = masked_table['ra'], masked_table['dec']
-                axs.scatter(tab_x, tab_y, s=5, marker="s", color='red')
-                # Set limits
-                axs.set(xlim=[np.min(tab_x), np.max(tab_x)],
-                        ylim=[np.min(tab_y), np.max(tab_y)])
-            elif lb == True:
-                l, b = bovy_coords.radec_to_lb(masked_table['ra'], masked_table['dec'], degree=True).T
-                l = [d - 360 if d > 180 else d for d in l]
-                axs.scatter(l, b, color="red", s=1, marker="o")
-                # Set limits
-                axs.set(xlim=[np.min(l), np.max(l)],
-                        ylim=[np.min(b), np.max(b)])
+                plt.close()
+                plt.clf()
 
-            axs.grid(True, which='major', alpha=1, linewidth=0.25, color="black")  # Enable grids on subplot
-            axs.grid(True, which='minor', alpha=1, linewidth=0.25, color="black")
-            legend_elements.append(Patch(edgecolor='white',
-                                         facecolor='red',
-                                         label="Stars"))
-
-            plt.legend(loc='upper right', handles=legend_elements)
-            axs.set_facecolor("k")
-            if lb == False:
-                axs.set(xlabel=r'$\alpha$' + " / deg", ylabel=r'$\delta$' + " / deg")
-            elif lb == True:
-                axs.set(xlabel=" l / deg", ylabel="b / deg")
-            axs.grid(color="white")
-            plt.gca().invert_xaxis()
-
-            # Create save directory/save
-            if savedexdir != None:
-                try:
-                    os.mkdir(windows_directories.imgdir + "\\" + "vasiliev")
-                except:
-                    pass
-                plt.savefig(windows_directories.imgdir + "\\" + "vasiliev"+ "\\" + savedexdir + ".png", dpi=300)
-            plt.close()
-            #plt.show()
+            except:
+                plt.close()
+                plt.clf()
+                pass
 
     # Colour-coded map like in "The Global Dynamical Atlas of the Milky Way Mergers:
     # Constraints from Gaia EDR3–based Orbits of Globular Clusters, Stellar Streams, and Satellite Galaxies"
@@ -916,7 +951,7 @@ class spec_graph(object):
         plt.legend(handles=legend_elements, loc='lower left')
         if savepath != None:
             try:
-                plt.savefig(savepath, dpi=300)
+                plt.savefig(savepath, dpi=300, transparent=True)
             except:
                 plt.savefig(savepath)
 
@@ -950,8 +985,8 @@ class spec_graph(object):
             vT *= orbigist.rovo[1]
             z *= orbigist.rovo[0]
             vz *= orbigist.rovo[1]
-            X, Y, Z = bovy_coords.galcencyl_to_XYZ(R, phi, z, Xsun=orbigist.rovo[0], Zsun=orbigist.zo).T
-            l, b, d = bovy_coords.XYZ_to_lbd(X, Y, Z, degree=True).T
+            X, Y, Z = coords.galcencyl_to_XYZ(R, phi, z, Xsun=orbigist.rovo[0], Zsun=orbigist.zo).T
+            l, b, d = coords.XYZ_to_lbd(X, Y, Z, degree=True).T
             l = [d - 360 if d > 180 else d for d in l]
             if line == True:
                 ax.plot(l,b,lw=1,color='red', zorder=1)
@@ -966,8 +1001,8 @@ class spec_graph(object):
             vT *= orbigist.rovo[1]
             z *= orbigist.rovo[0]
             vz *= orbigist.rovo[1]
-            X, Y, Z = bovy_coords.galcencyl_to_XYZ(R, phi, z, Xsun=orbigist.rovo[0], Zsun=orbigist.zo).T
-            l, b, d = bovy_coords.XYZ_to_lbd(X, Y, Z, degree=True).T
+            X, Y, Z = coords.galcencyl_to_XYZ(R, phi, z, Xsun=orbigist.rovo[0], Zsun=orbigist.zo).T
+            l, b, d = coords.XYZ_to_lbd(X, Y, Z, degree=True).T
             l = [d - 360 if d > 180 else d for d in l]
             if line == True:
                 ax.plot(l,b,lw=1,color='blue', zorder=1)
@@ -975,7 +1010,7 @@ class spec_graph(object):
                 ax.scatter(l, b, s=0.01, color='blue', zorder=1)
 
         # Plot the base
-        ax.scatter([d - 360 if d > 180 else d for d in table['l']], table['b'], s=15, color='white', marker='x',
+        ax.scatter([d - 360 if d > 180 else d for d in table['l']], table['b'], s=80, color='white', marker='x',
                    zorder=2)
 
         ax.set_facecolor("k")
@@ -983,14 +1018,16 @@ class spec_graph(object):
 
         if savepath != None:
             try:
-                plt.savefig(savepath, dpi=300)
+                plt.savefig(savepath, dpi=300, transparent=True)
             except:
                 plt.savefig(savepath)
-
-        plt.show(dpi=200)
+        else:
+            return fig, ax
+        #plt.show()
 
     # above but for theta/phi
-    def clust_thetaphi(self, table, clustering, cluster_id=False, vasiliev=False, savedexdir=None, gcc_thetaphis=None):
+    def clust_thetaphi(self, table, clustering, cluster_id=False, vasiliev=False, savedexdir=None, gcc_thetaphis=None,
+                       flatfork=False):
         if cluster_id is False:
             # Get the n0 of clusters
             nclust = np.max(clustering) + 1
@@ -1054,12 +1091,18 @@ class spec_graph(object):
             axs.grid(color="white")
 
             # Create save directory/save
-            if savedexdir != None:
+            if savedexdir != None and flatfork == False:
                 try:
                     os.mkdir(windows_directories.imgdir + "\\" + "vasiliev")
                 except:
                     pass
-                plt.savefig(windows_directories.imgdir + "\\" + "vasiliev"+ "\\" + savedexdir + "_thetaphi.png", dpi=300)
+                plt.savefig(windows_directories.imgdir + "\\" + "vasiliev" + "\\" + savedexdir + "_thetaphi.png", dpi=300)
+            if savedexdir != None and flatfork == True:
+                try:
+                    os.mkdir(windows_directories.imgdir + "\\" + "flatfork_vasiliev")
+                except:
+                    pass
+                plt.savefig(windows_directories.imgdir + "\\" + "flatfork_vasiliev" + "\\" + savedexdir + "_thetaphi.png", dpi=300)
             # Show
             #plt.show()
 
@@ -1114,13 +1157,21 @@ class spec_graph(object):
             axs.grid(color="white")
             axs.set(xlabel=r'$\theta$',
                     ylabel=r'$\phi$')
+
             # Create save directory/save
-            if savedexdir != None:
+            if savedexdir != None and flatfork == False:
                 try:
                     os.mkdir(windows_directories.imgdir + "\\" + "vasiliev")
                 except:
                     pass
-                plt.savefig(windows_directories.imgdir + "\\" + "vasiliev"+ "\\" + savedexdir + "_thetaphi.png", dpi=300)
+                plt.savefig(windows_directories.imgdir + "\\" + "vasiliev" + "\\" + savedexdir + "_thetaphi.png", dpi=300)
+            if savedexdir != None and flatfork == True:
+                try:
+                    os.mkdir(windows_directories.imgdir + "\\" + "flatfork_vasiliev")
+                except:
+                    pass
+                plt.savefig(windows_directories.imgdir + "\\" + "flatfork_vasiliev" + "\\" + savedexdir + "_thetaphi.png", dpi=300)
+            # Show
             #plt.show()
 
     # above but for arrays [v1, v2, v3] and will plot ALL points alongside the greatcircle theta/phi. Debug purposes.
@@ -1416,7 +1467,7 @@ class spec_graph(object):
 
         if savepath != None:
             try:
-                plt.savefig(savepath, dpi=300)
+                plt.savefig(savepath, dpi=300, transparent=True)
             except:
                 plt.savefig(savepath)
         plt.show()

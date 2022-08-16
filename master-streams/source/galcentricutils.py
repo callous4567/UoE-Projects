@@ -1,6 +1,7 @@
 import copy
 import pickle
 import time
+import numba
 import pandas
 import munkres
 from astropy.stats import sigma_clipped_stats
@@ -23,9 +24,17 @@ from numpy import random
 import astropy.coordinates as coord
 from astropy.coordinates import galactocentric_frame_defaults
 import astropy.units as u
-import plotly.io as plio
 import hdbscan
 import windows_directories
+
+# Inclusion of Julia (for certain functions)
+from juliacall import Main, convert
+Main.include(os.path.join(windows_directories.jl_dir, "munkres.jl"))
+#from julia import Main
+#Main.include(os.path.join(windows_directories.jl_dir, "munkres.jl"))
+
+# Plotly
+import plotly.io as plio
 plio.renderers.default = "browser"
 # SOME NOTES
 """
@@ -56,6 +65,12 @@ axis points roughly towards the North Galactic Pole (b=90∘).
 
 # Handles Galactocentric Cartesian/Galactic Cartesian transformations (with ICRS optional-see deprected)
 class galconversion(object):
+
+    """
+
+    Our convention in this is that dmu_l has no cos(b) factor and pmra has no cos(dec) factor... Please stick to this.
+
+    """
     def __init__(self):
         self.owd, self.sol_params = os.getcwd(), np.zeros((1,4))
         self.source = "null"
@@ -102,8 +117,12 @@ class galconversion(object):
         # Set up HDF and grab table, and SkyCoord objects for all targets.
         #writer = hdfutils.hdf5_writer(hdfdir, hdfname)
         #table = writer.read_table(group, set)
-        skycoords = coord.SkyCoord(l=table['l'] * u.deg, b=table['b'] * u.deg, distance=table['dist'] * u.kpc,
-                                   pm_l_cosb=table['dmu_l']*np.cos(np.deg2rad(table['b'])) * u.mas/u.yr, pm_b=table['dmu_b']*u.mas/u.yr, radial_velocity=table['vlos']*u.km/u.s,
+        skycoords = coord.SkyCoord(l=table['l'].data * u.deg,
+                                   b=table['b'].data * u.deg,
+                                   distance=table['dist'].data * u.kpc,
+                                   pm_l_cosb=table['dmu_l'].data*np.cos(np.deg2rad(table['b'].data)) * u.mas/u.yr,
+                                   pm_b=table['dmu_b'].data*u.mas/u.yr,
+                                   radial_velocity=table['vlos'].data*u.km/u.s,
                                    frame="galactic")
         # Effect conversion to ICRS, work through objects, collect converted quantities.
         icrs_skycoords = skycoords.transform_to(coord.ICRS)
@@ -130,17 +149,35 @@ class galconversion(object):
         return table
         #writer.write_table(group, set, table)
 
-    # Converts ICRS to Galactic instead.
-    def ICRS_to_GAL(self, hdfdir, hdfname, group, set):
+    # Converts ICRS to Galactic instead. If pmra is already multiplied by cos(dec), then set has_cosfactor to True.
+    """
+    
+    ACCORDING TO GAIA SOURCE:
+    
+    pmra : Proper motion in right ascension direction (double, Angular Velocity[mas/year])
+
+    Proper motion in right ascension μα*≡μαcosδ of the source in ICRS at the reference epoch ref_epoch. 
+    This is the local tangent plane projection of the proper motion vector in the direction of increasing right ascension.
+    
+    GAIA DOES ALREADY HAVE THE COS FACTOR!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    """
+    def ICRS_to_GAL(self, hdfdir, hdfname, group, set, has_cosfactor=False):
         # Set up HDF and grab table, and SkyCoord objects for all targets.
         writer = hdfutils.hdf5_writer(hdfdir, hdfname)
         table = writer.read_table(group, set)
-        skycoords = coord.SkyCoord(ra=table['ra']*u.deg,
-                                   dec=table['dec']*u.deg,
-                                   distance=table['dist']*u.kpc,
-                                   pm_ra_cosdec=table['pmra']*np.cos(np.deg2rad(table['dec']))*u.mas/u.yr,
-                                   pm_dec=table['pmdec']*u.mas/u.yr,
-                                   radial_velocity=table['vlos']*u.km/u.s,
+
+        # Take account of the cos factor
+        if has_cosfactor == True:
+            pmras_cosdec = table['pmra'].data
+        else:
+            pmras_cosdec = table['pmra'].data * np.cos(np.deg2rad(table['dec'].data))
+
+        skycoords = coord.SkyCoord(ra=table['ra'].data*u.deg,
+                                   dec=table['dec'].data*u.deg,
+                                   distance=table['dist'].data*u.kpc,
+                                   pm_ra_cosdec=pmras_cosdec*u.mas/u.yr,
+                                   pm_dec=table['pmdec'].data*u.mas/u.yr,
+                                   radial_velocity=table['vlos'].data*u.km/u.s,
                                    frame="icrs")
         # Effect conversion to Galactocentric, work through objects, collect converted quantities.
         gal_skycoords = skycoords.transform_to(coord.Galactic)
@@ -155,6 +192,36 @@ class galconversion(object):
         # Modify and save table.
         table['l'],table['b'],table['dmu_l'],table['dmu_b'] = l_list,b_list,dmu_l_list,dmu_b_list
         writer.write_table(group, set, table)
+    def nowrite_ICRS_to_GAL(self, table, has_cosfactor=False):
+
+        # Take account of the cos factor
+        if has_cosfactor == True:
+            pmras_cosdec = table['pmra'].data
+        else:
+            pmras_cosdec = table['pmra'].data * np.cos(np.deg2rad(table['dec'].data))
+
+        skycoords = coord.SkyCoord(ra=table['ra'].data*u.deg,
+                                   dec=table['dec'].data*u.deg,
+                                   distance=table['dist'].data*u.kpc,
+                                   pm_ra_cosdec=pmras_cosdec*u.mas/u.yr,
+                                   pm_dec=table['pmdec'].data*u.mas/u.yr,
+                                   radial_velocity=table['vlos'].data*u.km/u.s,
+                                   frame="icrs")
+        # Effect conversion to Galactocentric, work through objects, collect converted quantities.
+        gal_skycoords = skycoords.transform_to(coord.Galactic)
+        l_list,b_list,dmu_l_list,dmu_b_list = [],[],[],[]
+        for object in gal_skycoords:
+            l,b,dmub = object.l/u.deg, object.b/u.deg, object.pm_b/(u.mas/u.yr)
+            l,b,dmub = l.value,b.value,dmub.value
+            dmul = ((object.pm_l_cosb/(u.mas/u.yr)).value)/math.cos(math.radians(b))
+
+            l_list.append(l),b_list.append(b),dmu_b_list.append(dmub),dmu_l_list.append(dmul)
+
+        # Modify and save table.
+        table['l'],table['b'],table['dmu_l'],table['dmu_b'] = l_list,b_list,dmu_l_list,dmu_b_list
+
+        return table
+
 
     # Galactocentric to Galactic.
     def GALCENT_to_GAL(self, hdfdir, hdfname, group, set):
@@ -213,9 +280,12 @@ class galconversion(object):
     def nowrite_GAL_to_GALCENT(self, table):
 
         # Set up HDF and grab table, and SkyCoord objects for all targets.
-        skycoords = coord.SkyCoord(l=table['l'] * u.deg, b=table['b'] * u.deg, distance=table['dist'] * u.kpc,
-                                   pm_l_cosb=table['dmu_l'] * np.cos(np.radians(table['b'])) * u.mas / u.yr,
-                                   pm_b=table['dmu_b'] * u.mas / u.yr, radial_velocity=table['vlos'] * u.km / u.s,
+        skycoords = coord.SkyCoord(l=table['l'].data * u.deg,
+                                   b=table['b'].data * u.deg,
+                                   distance=table['dist'].data * u.kpc,
+                                   pm_l_cosb=table['dmu_l'].data * np.cos(np.radians(table['b'].data)) * u.mas / u.yr,
+                                   pm_b=table['dmu_b'].data * u.mas / u.yr,
+                                   radial_velocity=table['vlos'].data * u.km / u.s,
                                    frame="galactic")
         # Effect conversion to ICRS, work through objects, collect converted quantities.
         galcent_skycoords = skycoords.transform_to(coord.Galactocentric)
@@ -614,6 +684,7 @@ Before running anything make sure to use galdefine to make sure your solar coord
 class monte_angular(object):
     def __init__(self):
         self.converter = galconversion()
+        self.rng = np.random.default_rng()
     # Define galconversion for self.
     def galdefine(self, source, solinfo):
         self.converter.solinfo_grab(source, solinfo)
@@ -621,12 +692,12 @@ class monte_angular(object):
     # Do a monte-carlo for a given [l,b,distance,dmul,dmub,vlos,edist,edmul,edmub,evlos] vector.
     def vec_monte(self, vec, n):
         # Generate spread for vec (errors in parameter space)
-        dists = np.random.default_rng().normal(vec[2], vec[6], n)
+        dists = self.rng.normal(vec[2], vec[6], n)
         dists = np.abs(dists) # negatives happen- bad for calculating. Introduces bias for low dist (not interested.)
                               # TODO: Even if a bias occurs here, it'll be so few that it shouldn't impact. Check later.
-        dmuls = np.random.default_rng().normal(vec[3], vec[7], n)
-        dmubs = np.random.default_rng().normal(vec[4], vec[8], n)
-        vloses = np.random.default_rng().normal(vec[5], vec[9], n)
+        dmuls = self.rng.normal(vec[3], vec[7], n)
+        dmubs = self.rng.normal(vec[4], vec[8], n)
+        vloses = self.rng.normal(vec[5], vec[9], n)
         ls, bs = [vec[0] for d in dists], [vec[1] for d in dists]
         # Create table
         astrotable = Table()
@@ -663,18 +734,25 @@ class monte_angular(object):
         vec_galcent = self.converter.vec_GAL_to_GALCENT(*vec[0:6]) # x y z vx vy vz
         vec_L = angular().vec_momentum(vec_galcent)
 
-        # Generate spread for vec (errors in parameter space)
-        dists = np.random.default_rng().normal(vec[2], vec[6], n)
-        dists = np.abs(dists) # negatives happen- bad for calculating.
-        dmuls = np.random.default_rng().normal(vec[3], vec[7], n)
-        dmubs = np.random.default_rng().normal(vec[4], vec[8], n)
-        vloses = np.random.default_rng().normal(vec[5], vec[9], n)
-        ls, bs = [vec[0] for d in dists], [vec[1] for d in dists]
+        # For the distances, consider error in log space (Sergey Koposov recommendation.)
+        dist_mean, dist_err = np.abs(vec[2]), np.abs(vec[6])
+        par_mean = 1/dist_mean
+        par_err = (dist_err/dist_mean)*par_mean
+        dists = self.rng.normal(par_mean, par_err, n) # assume errors logarithmic distance
+        dists = 1/dists # convert back from log space
+        ones = np.ones_like(dists)
+
+        # All the rest
+        dmuls = self.rng.normal(vec[3], vec[7], n)
+        dmubs = self.rng.normal(vec[4], vec[8], n)
+        vloses = self.rng.normal(vec[5], vec[9], n)
+        ls, bs = vec[0]*ones, vec[1]*ones # [vec[0] for d in dists], [vec[1] for d in dists]
 
         # Create table
         astrotable = Table()
         astrotable['l'], astrotable['b'], astrotable['dist'], astrotable['dmu_l'], astrotable['dmu_b'], \
         astrotable['vlos'] = ls, bs, dists, dmuls, dmubs, vloses
+        astrotable['dist'] = np.abs(astrotable['dist'])
 
         # Convert to Galactocentric
         astrotable = self.converter.nowrite_GAL_to_GALCENT(astrotable)
@@ -750,9 +828,14 @@ class monte_angular(object):
             for j in range(6):
                 cov6D[i, j] = np.mean(deviation_vector[i] * deviation_vector[j], axis=0)
 
-        return cov, stdevs, vec_L, cov2, stdevs2, vec_4d, cov3, vec_LE, cov6D, vec_6D
+        return cov, stdevs, vec_L , cov2, stdevs2, vec_4d, cov3, vec_LE, cov6D, vec_6D
+
     # Returns a pandas dataframe instead: useful to avoid write conflicts. Cleanup after.
     # Same monte as above, except with covariance matrices under ['covtrix'] too.
+    # Assumes Gaussian edist/dist.
+    # TODO: We aren't able to get the pure colour/etc error corrections- there are systematic error corrections
+    # TODO: done by LAMOST/etc research- see the 2016 Bayesian Paper (where they calculate dist/edist.)
+    # TODO: consequently, just use typical gauss method.
     def table_covmonte(self, table, n):
         table = self.converter.nowrite_GAL_to_GALCENT(table)
         table = angular().get_momentum(table)
@@ -764,7 +847,9 @@ class monte_angular(object):
             l, b, dist, dmul, dmub, vlos = row['l'], row['b'], row['dist'], row['dmu_l'], row['dmu_b'], row['vlos']
             edist, edmul, edmub, evlos = row['edist'], row['edmu_l'], row['edmu_b'], row['evlost']
             vec = [l, b, dist, dmul, dmub, vlos, edist, edmul, edmub, evlos]
-            covtrix, stdevs, vec_L, covtrix2, stdevs2, vec_4d, covtrix3, vec_LE, cov6D, vec_6D = self.vec_covmonte(vec, n)
+            covtrix, stdevs, vec_L, \
+            covtrix2, stdevs2, vec_4d, \
+            covtrix3, vec_LE, cov6D, vec_6D = self.vec_covmonte(vec, n) # , covtrix2, stdevs2, vec_4d, covtrix3, vec_LE, cov6D, vec_6D
             covtrices.append(covtrix), stdevslist.append(stdevs), mean_angulars.append(vec_L)
             covtrices2.append(covtrix2), stdevslist2.append(stdevs2), mean_4ds.append(vec_4d)
             covtrices3.append(covtrix3), mean_4dLEs.append(vec_LE)
@@ -788,6 +873,7 @@ class monte_angular(object):
         df['vec_6D'] = mean_vecs6D # the mean value for the stars
 
         return df
+
     # Given table with n rows, will generate m multivariate-normal distributed momentum vectors for each row in table.
     # Will return a pandas, with n rows, and m columns: each column is one unique set of momentum vectors.
     # TODO: If you go down and do 2D analysis, you will need to scatter in energy space, too. Hence position.
@@ -803,6 +889,7 @@ class monte_angular(object):
             L_generated = random.default_rng().multivariate_normal(mean=L_vector, cov=covtrix, size=m)
             list_of_rows.append(list(L_generated))
         list_of_columns = list(map(list, zip(*list_of_rows)))
+
 
         # Create example datasets with L LZ E CIRC
         covtrices2 = panda['covtrix2']
@@ -836,7 +923,7 @@ class monte_angular(object):
 
 
 
-        return list_of_columns, list_of_columns_2, list_of_columns_3, list_of_columns_4
+        return list_of_columns  , list_of_columns_2, list_of_columns_3, list_of_columns_4
 
 # Great Circle Cell Counts in the Galactocentric System, as defined by 1996 Johnston Paper.
 # Note: Designed to work in Standard Polar, not Latipolar. ALL IN DEGREES!
@@ -1076,10 +1163,21 @@ class greatcount(object):
         thetas, phis, indices = np.array(acceptphetaphiindices).T
         return thetas, phis, indices
 
-    # Unlike the above, the new table retains original data, but has a new column ("greatcount") with TRUE or FALSE
-    # TODO: TRUE is inside the circle, FALSE is not. This is to permit correct cluster comparisons down the line.
-    # "radmin" has been removed, given we already clean the data in ascii_helioport.
+
     def gcc_table_retain(self, table, theta, phi, dtheta):
+
+        """
+
+        Unlike the above, the new table retains original data, but has a new column ("greatcount") with TRUE or FALSE
+
+        "radmin" has been removed, given we already clean the data in ascii_helioport.
+
+        :param table: -
+        :param theta: degrees
+        :param phi: degrees
+        :param dtheta: -
+        :return: astropy table
+        """
         # Set up unit vector for GCC
         theta, phi, dtheta = np.radians(theta), np.radians(phi), np.radians(dtheta)
         polar_unit = np.array([np.sin(theta) * np.cos(phi), np.sin(theta) * np.sin(phi), np.cos(theta)])
@@ -1143,6 +1241,7 @@ class greatfit(object):
 
     # Generate a set of theta, phi (in galcentricpolar) for a given GCC. Theta,phi must be in degrees. Output in degs.
     def gcc_gen(self, n_points, theta, phi):
+
         # Convert
         theta, phi = np.radians(theta), np.radians(phi)
 
@@ -1183,6 +1282,7 @@ class greatfit(object):
     # Given a set of points in galcentricpolar on the unit sphere, get the least-squares distance to the theta/phi.
     # The data input should be in degrees.
     def least_squares(self, theta_data, phi_data, theta_pole, phi_pole, resolution, real_distance):
+
         # Input in degrees hence convert to radians.
         theta_data, phi_data = np.radians(theta_data), np.radians(phi_data)
 
@@ -1234,6 +1334,47 @@ class greatfit(object):
 
             return squaresum
 
+    # Get the standard deviation of the provided stars from the provided greatcircle
+    def deviation_from_gc(self, theta_data, phi_data, theta_pole, phi_pole, resolution):
+
+        # Input in degrees hence convert to radians.
+        theta_data, phi_data = np.radians(theta_data), np.radians(phi_data)
+
+        # Generate the unit vectors for the data
+        dx, dy, dz = np.cos(phi_data)*np.sin(theta_data),np.sin(phi_data)*np.sin(theta_data),np.cos(theta_data)
+        data_vects = np.empty((len(dx), 3), dtype=types.float64)
+        data_vects[:,0] = dx
+        data_vects[:,1] = dy
+        data_vects[:,2] = dz
+
+        # Generate GCC Data (gcc_gen output in degrees hence convert to radians.)
+        gcc_thetas, gcc_phis = self.gcc_gen(resolution, theta_pole, phi_pole)
+        gcc_thetas, gcc_phis = np.radians(gcc_thetas), np.radians(gcc_phis)
+
+        # Unit vectors for GCC Data
+        gx, gy, gz = np.cos(gcc_phis)*np.sin(gcc_thetas), np.sin(gcc_phis)*np.sin(gcc_thetas), np.cos(gcc_thetas)
+        gcc_vectrs = np.empty((len(gx), 3), dtype=types.float64)
+        gcc_vectrs[:, 0] = gx
+        gcc_vectrs[:, 1] = gy
+        gcc_vectrs[:, 2] = gz
+
+        # For each point in the data, get distance in radians + append
+        mindists = list(np.empty(0, numba.types.float64))
+        for theta, phi in zip(theta_data, phi_data):
+
+            theta_dif = theta - gcc_thetas
+            phi_dif = phi - gcc_phis
+            distsquare = theta_dif ** 2 + (phi_dif * np.sin(theta)) ** 2
+            mindist = np.sqrt(np.min(distsquare))
+            mindists.append(mindist)
+
+        # Get standard deviation on distance
+        std_dist = np.std(np.array(mindists))
+
+        # Also get the "maximum distance"
+        max_dist = np.max(np.array(mindists))
+
+        return std_dist, max_dist
 
 
 # Carry out a clustering (HDBSCAN-oriented).
@@ -1241,9 +1382,11 @@ class greatfit(object):
 class cluster3d(object):
     def __init__(self):
         self.null = "null"
-        self.bounds = np.array([[-8e3, 6e3],
+        self.bounds = np.array([[-10e3, 10e3],
                                [-10e3, 10e3],
-                               [-7e3, 7e3]])
+                               [-10e3,10e3]])
+        self.cc = compclust()
+        self.sizediflim = 1/2
 
     # Remove outlying L-values (units of sigma). Takes either Panda or an Astropy Table via our format.
     """
@@ -1276,10 +1419,7 @@ class cluster3d(object):
 
     # Remove stars within radius of r
     def r_clean(self, table, minimum_radius):
-        # Clean Radius
-        for num, row in enumerate(table):
-            if row['r'] <= minimum_radius:
-                table.remove_row(num)
+        table = table[[True if r > minimum_radius else False for r in table['r']]]
         return table
 
     # Return probabilistic selection for bounding box as True or False (a generator object.) Replaces clean.
@@ -1313,6 +1453,22 @@ class cluster3d(object):
         else:
             return hdbs
 
+    def listhdbs_updated(self, array, minpar, max_cluster_size):
+        # Flat-clustering example (select n_clusters instead.)
+        #clusterer = flat.HDBSCAN_flat(min_cluster_size=minpar[0],
+        #                              min_samples=minpar[1],
+        #                              metric='l2',
+        #                              algorithm='best',prediction_data=True,n_clusters=10,X=array)
+        #clustered = flat.approximate_predict_flat(clusterer, array, 10)
+        # return np.array(clustered[0])
+        hdbs = hdbscan.HDBSCAN(min_cluster_size=int(minpar[0]),
+                               max_cluster_size=max_cluster_size,
+                               min_samples=int(minpar[1]),
+                               metric='l2',
+                               algorithm='best')
+        hdbsfit = hdbs.fit_predict(array)
+        return np.array(hdbsfit)
+
 
     # Hierarchical DBS: returns memberships. Astropy Tables.
     # Deprecated basically (designed for kmeans_L/xmeans_L graph)
@@ -1329,6 +1485,125 @@ class cluster3d(object):
         graphutils.threed_graph().kmeans_L(table, False, browser)
         #graphutils.threed_graph().xmeans_L(table, "test_hdbs.html", browser)
         return table
+
+
+    def minsamples_finetune(self, cut_array, cut_clustered,
+                            clust_to_finetune, minsamples_range, min_clust_size,
+                            trials_per_samples, minimum_trial_score, minimum_trial_analytically,
+                            max_clust_size):
+        """
+
+        Function to fine-tune for min_samples for greatfits.
+
+            - For the provided minsamples_range, will iterate over in steps of unity
+            - Will cluster trials_per_samples times
+            - Per trial, will cluster, re-label to the default clustering cut_clustered, and score
+            - Score evaluates how much of the original clustering of clust_to_finetune is captured
+            - Score also accounts for similarity in size- if the new cluster is too small, bad.
+            - If the new cluster is bigger by a fraction, sizediflim, then also bad.
+            - Perfect score if identical or slightly larger.
+            - Trials with a score < minimum_trial_score are rejected
+            - For each min_samples, we obtain an average of the number of successfully scored trials
+            - We select min_samples that has the maximum fraction of successful scores
+
+        The scoring method ensures that min_samples is optimized such that
+
+            - Greatcircles will have clustering that at the bare minimum, replicates the non-greatcircle results
+            - The quasi-analytic-ness of the clustering is as close to analytic as possible
+
+        :param cut_array: array, float, (len(cut_clustered), 3)
+        :param cut_clustered: array, int
+        :param clust_to_finetune: which cluster we are intested in, int
+        :param minsamples_range: [a,b]
+        :param min_clust_size: int, from ascii_info defaults
+        :param trials_per_samples: int
+        :param minimum_trial_score: float, [0,1] recommended 0.9
+        :param minimum_trial_analytically: float, [0,1] recommended 0.9
+        :return: int, min_samples recommended
+        """
+        # Get the greatcut
+        avail_samples = np.arange(minsamples_range[0], minsamples_range[1], 1)
+        scores, numclusts, sizedifs, passfracs = [0 for d in avail_samples], \
+                                                 [1 for d in avail_samples], \
+                                                 [0 for d in avail_samples], \
+                                                 [0 for d in avail_samples]
+
+        # For each minsamples available
+        for num, min_samples in enumerate(avail_samples):
+
+            # Fraction of trials that are successful
+            passfrac = 0
+
+            # Average score
+            average_score = 0
+
+            # Average numclust
+            nc = []
+
+            # Sizedifs
+            sizedif = 0
+
+            # Successful trials
+            success_trials = 0
+
+            # For each trial in trials_per_samples...
+            for trial in range(trials_per_samples):
+
+                # Cluster it accordingly
+                trial_clustered = hdbscan.HDBSCAN(min_cluster_size=int(min_clust_size),
+                                          min_samples=int(min_samples),
+                                          metric='l2',
+                                          algorithm='best',
+                                          max_cluster_size=max_clust_size)
+                trial_clustered = np.array(trial_clustered.fit_predict(cut_array))
+
+                # Re-label this to cut_clustered
+                trial_clustered = self.cc.compclust_multilabel_julia(cut_clustered, trial_clustered, 40)
+
+                # Score it
+                score, sd, sizedifbool = self.cc.score_match(cut_clustered, trial_clustered, clust_to_finetune, self.sizediflim)
+
+                # Whether the score is a success (has to exceed the minimum score fraction)
+                if score > minimum_trial_score:
+
+                    passfrac += 1/trials_per_samples
+                    average_score += score
+                    nc.append(self.cc.nclust_get_complete(trial_clustered)[0])
+                    sizedif += sd
+                    success_trials += 1
+
+            if passfrac > 0:
+
+                # Average the score and size difference
+                average_score /= success_trials
+                #print(average_score, min_samples)
+                sizedif /= success_trials
+
+                # Get the average numclust
+                numclusts[num] = int(np.mean(np.array(nc)))
+
+                # Set the score to the average score (passfrac too)
+                scores[num] = average_score
+                passfracs[num] = passfrac
+                sizedif /= success_trials
+                sizedifs[num] = sizedif
+
+            else:
+
+                pass
+                
+        # Select the highest scoring min_samples
+        scores = np.array(scores)
+        best_samples = np.argmax(scores)
+        numclusts = numclusts[best_samples]
+        passfail = scores[best_samples]
+        best_samples = avail_samples[best_samples]
+
+        # Whether the min_samples selected performs, on average, consistent across all trials (i.e. quasi-analytically.)
+        passfail = True if passfail > minimum_trial_analytically else False
+
+        # Return the best samples and all the scores/etc
+        return best_samples, passfail, numclusts, scores, sizedifs
 
 
 # Create pseudo-random 3D multivariates for cluster testing,
@@ -1480,6 +1755,33 @@ class compclust(object):
         # Pass this to graphutils plotting to generate a plot
         graphutils.twod_graph().nclust_n(arrays, group)
 
+    # Flatforked
+    def flatfork_graph_nclust(self, group, energy=False, sofie=False):
+
+        # Decide if using LxLyLzE or just LxLyLz
+        if energy == True:
+            # Load in the lists as a list of lists!
+            arrays = [windows_directories.duplimontedir + "\\" + group + "\\" + d + "_flatfork_" + ".cluster.txt" \
+                      for d in ascii_info.duplimonte_LE_saveids]
+        elif sofie == True:
+            # Load in the lists as a list of lists!
+            arrays = [windows_directories.duplimontedir + "\\" + group + "\\" + d + "_flatfork_" +  ".cluster.txt" \
+                      for d in ascii_info.duplimonte_L4D_saveids]
+        else:
+            # Load in the lists as a list of lists!
+            arrays = [windows_directories.duplimontedir + "\\" + group + "\\" + d + "_flatfork_" +  ".cluster.txt" \
+                      for d in ascii_info.duplimonte_saveids]
+
+        # Load in the arrays
+        for num, array in enumerate(arrays):
+            with open(array, 'rb') as f:
+                arrays[num] = pickle.load(f)
+
+        # Get the num
+        arrays = [self.nclust_get(d) for d in arrays]
+        # Pass this to graphutils plotting to generate a plot
+        graphutils.twod_graph().nclust_n(arrays, group)
+
     # The final rendition of compclust.
     """
     Compute cluster match via hungarian method (clust1 is reference, clust2 is the one we want to remap) 
@@ -1487,6 +1789,26 @@ class compclust(object):
     The new label will be subject to an index limit (i.e. a "minimum value" to avoid mixing labels from multiple.) 
     """
     def compclust_multilabel(self, clust1, clust2, minimum_excess_index):
+
+        #print(list(set(clust1)), list(set(clust2)))
+
+        """
+
+        # The final rendition of compclust.
+
+        - Compute cluster match via hungarian method (clust1 is reference, clust2 is the one we want to remap)
+        - If the 2nd clustering has say 9 clusterings while the first has 8, take the "least quality" match and relabel
+        - The new label will be subject to an index limit (i.e. a "minimum value" to avoid mixing labels from multiple.)
+
+        In the case of "minimum_excess_index" any clusters not in the reference that are in clust2 will be relabelled
+        to, at a minimum, this excess index.
+
+
+        :param clust1: reference clustering
+        :param clust2: to remap
+        :param minimum_excess_index: the minimum index that "excess cluster labels" should be given
+        :return:
+        """
         contmat = contingency_matrix(clust1, clust2)
         max_cost = np.amax(contmat)
         profit = max_cost - contmat
@@ -1511,6 +1833,8 @@ class compclust(object):
         # Generate the new relabelled clustering
         newclust = np.zeros(shape=np.shape(clust2), dtype=int)
         for thisPair in zip(row_ind, col_ind):
+            #print(thisPair)
+
             for num,clust_id in enumerate(clust2):
                 if clust_id == thisPair[1]:
                     newclust[num] = thisPair[0]
@@ -1562,6 +1886,122 @@ class compclust(object):
 
         return newclust
 
+    def compclust_multilabel_debug(self, clustt1, clustt2, minimum_excess_index):
+
+        # Work out the additive factors needed to ensure clusterings start at zero at the minimum.
+        to_zero = np.max([int(0 - np.min(clustt1)), int(0 - np.min(clustt1))])
+        clustt1 += to_zero
+        clustt2 += to_zero
+
+        lenn1, lenn2 = len(list(set(clustt1))), len(list(set(clustt2)))
+        if lenn2 > lenn1:
+            clust1 = clustt2
+            clust2 = clustt1
+        else:
+            clust1 = clustt1
+            clust2 = clustt2
+
+        # Get the match using contingency matrices / rectangular matching algorithm
+        contmat = contingency_matrix(clust1, clust2)
+        max_cost = np.amax(contmat)
+        cost = max_cost - contmat
+        assignments = Main.solve_hungarian(cost) - 1
+        workers = list(set(clust1))
+        jobs = list(set(clust2))
+        row_indd, col_indd = [],[]
+        for num, assignment in enumerate(assignments):
+            if assignment != -1:
+                row_indd.append(workers[num])
+                col_indd.append(jobs[assignment])
+
+        # Flip 'em back
+        if lenn2 > lenn1:
+            row_ind, col_ind = col_indd, row_indd
+        else:
+            row_ind, col_ind = row_indd, col_indd
+        clust1 = clustt1 - to_zero
+        clust2 = clustt2 - to_zero
+
+        # For matrix visualization tabular-style
+        """
+        
+        sol_map = np.zeros(contmat.shape, dtype=bool)
+        sol_map[row_ind, col_ind] = True
+
+        # Visualize plots (thanks Sascha!)
+        f, ax = plt.subplots(2, figsize=(9, 6))
+        sns.heatmap(contmat, annot=True, linewidths=.5, ax=ax[0], cbar=False,
+                    linecolor='black', cmap="YlGnBu")
+        sns.heatmap(contmat, annot=True, mask=~sol_map, linewidths=.5, ax=ax[1],
+                    linecolor='black', cbar=False, cmap="YlGnBu")
+        plt.tight_layout()
+        plt.show() """
+
+        # Row is "clust1" and col is "clust2" and adjust for the fact that -1 is now 0
+        # This is our mapping for the columns (clust2) to the rows (clust1)
+        row_ind, col_ind = row_ind - to_zero, col_ind - to_zero
+
+        # Generate the new relabelled clustering
+        newclust = np.zeros(shape=np.shape(clust2), dtype=int)
+        for thisPair in zip(row_ind, col_ind):
+            # print(thisPair)
+            for num, clust_id in enumerate(clust2):
+                if clust_id == thisPair[1]:
+                    newclust[num] = thisPair[0]
+
+        # Identify which clustering is the one with a higher number of clusters
+        """
+        If the 2nd cluster is np.max higher than the first, then we have a problem
+        This is "col_ind"
+        Find out if the max of this is larger for 2 than 1
+        If it is, then find the elements in this list not mapped over to the first
+        """
+        if np.max(clust2) > np.max(clust1):
+            # Generate a list of all unique indices for the original clust2
+            uniques = []
+            for cluster in clust2:
+                if cluster not in uniques:
+                    uniques.append(cluster)
+
+            # Find the indices that weren't paired by the Hungarian Algorithm (i.e. not remapped)
+            not_remapped = []
+            for unique in uniques:
+                if unique not in col_ind:
+                    not_remapped.append(unique)
+
+            # Generate replacement indices (subject to a "minimum_excess_index")
+            """
+            this index exists to let all "excess clusters" remain unique
+            minimum_excess_index is the minimum replacement!!!
+            for example, if clust2 is 8 and clust1 is 7, then a wise minimum would be 8:
+            the 8th cluster is labelled as an "excess cluster"
+            If you have two clusterings to compare to the base clustering, and both have 8
+            then comparing 1 to 0 should have a minimum of 8
+            comparing 2 to 0 should have a minimum of 9
+            this keeps the excess of either of them independent (i.e. the excess in 1-0 is 8, 2-0 is 9)
+            then you can individually compare cluster 8 and 9 to see if they are the same or different
+            anyway, just note that you should carefully pick the minimum_excess
+            and make sure that no excess clusterings between different Monte-carlo's are labelled the same
+            """
+            not_in_indices = []
+            for num, not_index in enumerate(not_remapped):
+                not_in_indices.append(minimum_excess_index + num)
+
+            # Go through this relabelled clustering and set all "not_in" clusters to min_new_label or higher
+            # This means that if clust1 is np.max of 8, and clust2 is 10, you want min_new_label set to be set to 9.
+            for mun, not_in_index in enumerate(not_remapped):
+                for num, clust_id in enumerate(newclust):
+                    if clust_id == not_in_index:
+                        newclust[num] = not_in_indices[mun]
+
+        return newclust
+
+    def compclust_multilabel_julia(self, clust1, clust2, minimum_excess_index):
+        return np.array(Main.compclust_multilabel(clust1, clust2, minimum_excess_index))
+
+
+
+
     # Given a stack of clusterings, [c1 c2 ... cN], compute percentage memberships. Assume clusterings as lists.
     # Key Weakness: assumes clusterings go from -1 to "maximum_cluster" continuously.
     # Will not work if not [-1, 0, 1...23] for example if [0, 5, 7]. Just as example.
@@ -1577,8 +2017,28 @@ class compclust(object):
     This will be counted separately to the noisy clusters. 
     """
     def compclust_multipercentage(self, clusterings, maximum_cluster):
-        # Array up
-        clusterings = np.array(clusterings)
+
+        """
+
+        Given a stack of clusterings, [c1 c2 ... cN], compute percentage memberships. Assume clusterings as lists.
+        Key Weakness: assumes clusterings go from -1 to "maximum_cluster" continuously.
+        Will not work if not [-1, 0, 1...23] for example if [0, 5, 7]. Just as example.
+
+        -    Load in clusterings
+        -    Find out percentage times that each star ends up in a given cluster
+        -    Only consider clusters up to the "maximum_cluster" (-1 is still counted as -1.)
+        -    We assume "maximum_cluster" is non-pythonic np.max(clustering)
+        -    Any clusters past that point just count as "noise" and we don't calculate the percentages for these
+        -    (i.e. the total sum doesn't have to be 100%. We just calculate for the first maximum_viable, get a % for that,
+        -    then attribute (100 - that) for the percentage lost to the random noisy clusters.)
+        -    We assume that each clustering still has noise cluster "-1" from HDBSCAN included
+        -    This will be counted separately to the noisy clusters.
+
+        :param clusterings:
+        :param maximum_cluster:
+        :return:
+        """
+
         # Add 1 to all clusters (to correct indices from -1 to 0. 0 is now noise from HDBSCAN
         clusterings += 1
         # Create an np array, up to "maximum_cluster," with same length as "clusterings."
@@ -1642,7 +2102,6 @@ class compclust(object):
         uniqueLabels2 = list(set(clust2))
         tranlatorDict = {}
         for thisPair in labelTranlater:
-            print(thisPair)
             tranlatorDict[uniqueLabels2[thisPair[1]]] = uniqueLabels1[thisPair[0]]
 
         return np.array([tranlatorDict[label] for label in clust2])
@@ -1720,10 +2179,21 @@ class compclust(object):
         Not statistically rigorous, but will allow greatcircles to be exemplified in use.
         """
 
-        # Add the greatcircle probabilities/etc to the table.
-        percent_reference['greatcircle_probable_clust'], \
-        percent_reference['greatcircle_probability'] = probable_clusts, \
+        # Add the greatcircle probabilities/etc to the table. Originally "greatcircle_probability"/"greatcircle_probable_clust"
+        percent_reference['greatcircle_probable_clust_prelim'], \
+        percent_reference['greatcircle_probability_prelim'] = probable_clusts, \
                                                        probabilities
+        
+        # Ensure that greatcircles only yield an improvement
+        percent_reference['greatcircle_probable_clust'] = percent_reference['greatcircle_probable_clust_prelim']
+        percent_reference['greatcircle_probability'] = percent_reference['greatcircle_probability_prelim']
+        for row in percent_reference:
+            if row['greatcircle_probable_clust_prelim'] == -1:
+                row['greatcircle_probable_clust'] = row['probable_clust']
+                row['greatcircle_probability'] = row['probability']
+
+        # Set probable_clust to the greatcircle_probable_clust from the table
+        probable_clusts = percent_reference['greatcircle_probable_clust']
 
         # Now, we need to re-calculate the total membership probabilities for the clusters of interest as data fraction
         present_clusters = []
@@ -1744,3 +2214,62 @@ class compclust(object):
 
         # Return table
         return percent_reference, table
+
+    @staticmethod
+    @njit(fastmath=True)
+    def score_match(clust1, clust2, clust_to_score, sidediflim):
+        """
+        Takes a reference clust1 and the secondary clust2, and the index of the cluster-to-score in clust1.
+
+        Returns:
+
+        - Score [0,1] with 1 meaning the cluster is entirely grouped in clust2
+        - The fraction by which clust2 exceeds clust1 in size (negative if less than)
+        - True/False on whether the matched cluster in clust2 is larger than sizedif_percent%
+
+        The way we score is by getting the fraction of stars from clust1 that appear in the same clust_to_score in
+        clust2. If the clust_to_score is larger by some fraction (size-dif-lim) then the score is set to zero automatic.
+        If it's not, the score is set to the fraction by which we overshoot (it can be negative, too.)
+        Naturally, a perfect score is the case where the clust_to_try in clust2 is equal to the one in the reference
+        clust1, or slightly larger.
+
+        :param clust1: array int 1d
+        :param clust2: array int 1d
+        :param clust_to_score: integer
+        :param sizedif_percent: float [0,1]
+        :return: score, sizedif, sizedifbool
+        """
+
+        # Always try-except to catch fucky cases.
+        try:
+
+            # Evaluate whether all the stars in 1 are represented in 2 for the same clust
+            where_in_1 = np.where(clust1 == clust_to_score)[0]
+            where_in_2 = np.where(clust2 == clust_to_score)[0]
+            not_in = 0
+            for i in where_in_1:
+                if i not in where_in_2:
+                    not_in += 1
+            score = 1 - (not_in/len(where_in_1))
+
+            # Get the fractional difference in the size between the two
+            sizedif = (len(where_in_2) - len(where_in_1))/len(where_in_1)
+
+            # Get a bool on whether the size difference exceeds a limiting fraction.
+            if sizedif > sidediflim:
+
+                sizedifbool = True
+
+                # If it does, set score to zero
+                score = 0
+
+            else:
+
+                sizedifbool = False
+
+            return score, sizedif, sizedifbool
+
+        except:
+
+            return 0, 2, False
+

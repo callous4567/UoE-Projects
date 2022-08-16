@@ -9,8 +9,9 @@ Double check, though!!!
 
 # The index for the entire star catalogue
 asciiname = "stardata.hdf5"
+flatfork_asciiname = "flatfork_stardata.hdf5"
 
-# Group/set of the combined catalogue
+# Group/set of the combined catalogue ***see LAMOST_2MASS_GAIA... this now has the DR7 LAMOST instead.***
 fullgroup, fullset = "full_raw", "astrotable"
 fullpanda = "astroframe"
 
@@ -46,7 +47,7 @@ gcs_minpar = [5,5]
 kgiant_minpar = [8,10]
 lamostk_minpar = [8,10]
 fulldata_oldminpar = [15,15]
-fulldata_minpar = [8, 10] # 8,10 is our final borderline acceptance (which works with our data cleaning.). 15,15 is the original. [15,15]
+fulldata_minpar = [8, 7] # using [8,9] for the initial clustering, then [8,10] for the monte carlo'd ones. # 8,10 is our final borderline acceptance (which works with our data cleaning.). 15,15 is the original. [15,15]
 fulldata_minpar_L4D = fulldata_minpar
 fulldata_minpar_LE = fulldata_minpar
 minpars_allgroups = [bhb_minpar, gcs_minpar, kgiant_minpar, lamostk_minpar]
@@ -57,12 +58,20 @@ minpars_allgroups = [bhb_minpar, gcs_minpar, kgiant_minpar, lamostk_minpar]
 clusters_to_cluster = [6, 11, 2, 8, 13, 9, 3, 1, 12, 4, 5, 0, 10]
 gcc_widths = [30, 15, 20, 25, 40, 20, 30, 15, 20, 20, 30, 25, 30]
 clusters_to_orbifit = [1, 3, 5, 6, 8, 13]
-clusters_to_maindata_orbifit = [2,9,10,12,14,15]
+flatfork_GSE_ID = 23
+import numpy as np
+clusters_to_maindata_orbifit = np.arange(0,24,1)
+flatfork_clusters_to_maindata_orbifit = np.arange(0,24,1)
 
 # The save-ids for all the generated orbit fits
-n_carlo = 200
+n_carlo = 50
 orbifit_saveids = [("orbifit_instance_{0:.0f}").format(d) for d in range(n_carlo)]
+flatfork_orbifit_saveids = [("flatfork_orbifit_instance_{0:.0f}").format(d) for d in range(n_carlo)]
 
 # For the maindata
 n_carlo_maindata = 50
 orbifit_maindata_saveids = [("orbifit_instance_maindata_{0:.0f}").format(d) for d in range(n_carlo_maindata)]
+flatfork_orbifit_maindata_saveids = [("flatfork_orbifit_instance_maindata_{0:.0f}").format(d) for d in range(n_carlo_maindata)]
+
+# Save the monte results
+# monte_fits_address = os.path.join(windows_directories.datadir, fullgroup + "_" + fullset +".fits")

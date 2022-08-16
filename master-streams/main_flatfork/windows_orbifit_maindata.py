@@ -1,13 +1,11 @@
-import copy
 import multiprocessing
-import os
+
 import warnings
 from pandas import DataFrame
 import ascii_info, windows_directories
-from ascii_info import n_carlo, orbifit_saveids
+from ascii_info import n_carlo
 import pickle
-import numpy as np
-import graphutils
+
 import hdfutils
 import windows_multiprocessing
 from energistics import orbifitter
@@ -26,51 +24,19 @@ should_run = False
 
 # Decide group and the clusters to cluster
 group = ascii_info.fullgroup
-
-# Take data greattable and obtain clusters to orbifit (length =/= 0)
-if __name__ == "__main__":
-
-    clusters_to_orbifit = []
-    total_percent_table = hdfutils.hdf5_writer(windows_directories.datadir,
-                                 ascii_info.flatfork_asciiname).read_table(ascii_info.fullgroup,
-                                                                  "total_percent_table_greatfitted")
-
-    for num,clust in enumerate(total_percent_table['cluster']):
-
-        if clust not in clusters_to_orbifit:
-
-            if clust != -1:
-
-                # Only bother if smaller than 10% fraction (i.e. Sgr/etc)
-                if total_percent_table[num]['membership_fraction'] < 0.1:
-
-                    clusters_to_orbifit.append(clust)
-
-    # Print it
-    print("Orbifitting for ", clusters_to_orbifit)
-    import time
-    time.sleep(10)
+clusters_to_orbifit = ascii_info.flatfork_clusters_to_maindata_orbifit
 
 # The saveids
-saveids = orbifit_saveids
+saveids = ascii_info.flatfork_orbifit_maindata_saveids
 
 # Run only if name is main.
 if __name__ == "__main__" and should_run == True:
 
-    # Grab the table
-    table = hdfutils.hdf5_writer(windows_directories.datadir,
-                                 ascii_info.asciiname).read_table(ascii_info.fullgroup,
-                                                                  ascii_info.fullset)
-
-    # Grab the elements-of-interest
-    table = table[['l','b','dist','dmu_l','dmu_b','vlos','edist','edmu_l','edmu_b','evlost']]
-
-    # Generate n_carlo tables like table
     tables = []
 
     try:
 
-        with open(windows_directories.datadir + "\\subtableorbits.txt", 'rb') as f:
+        with open(windows_directories.datadir + "\\flatfork_subtableorbits.txt", 'rb') as f:
             tables = pickle.load(file=f)
             tables = tables[0:n_carlo]
             print("Loaded")
@@ -85,13 +51,13 @@ if __name__ == "__main__" and should_run == True:
         # Grab the elements-of-interest
         table = table[['l','b','dist','dmu_l','dmu_b','vlos','edist','edmu_l','edmu_b','evlost']]
 
-        # Run the pool for the preliminaries
+        # Run the pool!
         pool = multiprocessing.Pool(8)
         tables = pool.map(windows_multiprocessing.do_monte_table, [table for i in range(n_carlo)])
         pool.close()
 
         # Try to save the table
-        with open(windows_directories.datadir + "\\subtableorbits.txt", 'wb') as f:
+        with open(windows_directories.datadir + "\\flatfork_subtableorbits.txt", 'wb') as f:
             pickle.dump(file=f, obj=tables)
 
     # Parameters for multiprocessing
@@ -102,13 +68,13 @@ if __name__ == "__main__" and should_run == True:
         parameterss.append([[group,saveid],
                              tab,
                              clusters_to_orbifit,
-                             2000,
-                             1e9,
-                             2000])
+                             1000,
+                             0.5e9,
+                             500])
 
     # Run the pool!
     pool = multiprocessing.Pool(8)
-    results = pool.map(windows_multiprocessing.do_orbifit, parameterss)
+    results = pool.map(windows_multiprocessing.flatfork_do_orbifit_maindata, parameterss)
     pool.close()
 
     # Set the ran
@@ -133,8 +99,25 @@ if should_run == False and __name__ == "__main__": # False:
 
     # Run the pool!
     pool = multiprocessing.Pool(8)
-    list_of_stats = pool.map(windows_multiprocessing.flatfork_do_orbistatistics, clusters_to_orbifit)
+    list_of_stats = pool.map(windows_multiprocessing.flatfork_maindata_do_orbistatistics, clusters_to_orbifit)
     pool.close()
+
+    # Iterate over the list of stats
+    for stats in list_of_stats:
+
+        # Section stats
+        ees, meanee, stdee, \
+        periggs, meanpg, stdpg, \
+        EEs, meanEE, stdEE, \
+        Lzs, meanLz, stdLz, \
+        apoggs, meanapog, stdapog = stats
+
+        # Append the stats
+        eesTT.append(ees), meaneeTT.append(meanee), stdeeTT.append(stdee), \
+        periggsTT.append(periggs), meanpgTT.append(meanpg), stdpgTT.append(stdpg), \
+        EEsTT.append(EEs), meanEETT.append(meanEE), stdEETT.append(stdEE), \
+        LzsTT.append(Lzs), meanLzTT.append(meanLz), stdLzTT.append(stdLz), \
+        apoggsTT.append(apoggs), meanapogTT.append(meanapog), stdapogTT.append(stdapog)
 
     # Set up column data
     all_data = [clusters_to_orbifit,
@@ -144,13 +127,12 @@ if should_run == False and __name__ == "__main__": # False:
     colss = ['cluster',
              'e', 'peri', 'E', 'Lz', 'apo',
              'e_std', 'peri_std', 'E_std', 'Lz_std', 'apo_std',
-             'e_data', 'peri_data', 'E_data', 'Lz_data', 'apo_data', ]
+             'e_data', 'peri_data', 'E_data', 'Lz_data', 'apo_data']
 
     # All done- save the df
     df = DataFrame(columns=colss)
     for data, col in zip(all_data, colss):
         df[col] = data
 
-
-    writer = hdfutils.hdf5_writer(windows_directories.datadir, ascii_info.asciiname)
-    writer.write_df("greatfit_monte_orbistatistics", "data", df)
+    writer = hdfutils.hdf5_writer(windows_directories.datadir, ascii_info.flatfork_asciiname)
+    writer.write_df("greatfit_monte_orbistatistics_maindata", "data", df)

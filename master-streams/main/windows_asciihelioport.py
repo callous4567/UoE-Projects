@@ -3,6 +3,7 @@ import asciiutils
 import os
 import galcentricutils
 import windows_stack
+from windows_builddir import dirbuilder
 from windows_directories import datadir, asciidir, sourcedir
 from ascii_info import asciiname, fullgroup, fullset, set_raw
 
@@ -23,6 +24,9 @@ read string using this dataset
 returns original unit string from ascii file
 """
 # ASCII FILE IMPORT!
+
+# Try to make dir
+dirbuilder()
 
 # Navigate to asciidir, grab filenames with/without .txt
 os.chdir(asciidir)
@@ -46,20 +50,27 @@ for n,d in enumerate(asciis):
     galcent.solinfo_grab(sourcedir, "solar_info.dat")
     galcent.solgal_set()
 
-    # Convert to Galcentric and Get Momenta (angular.)
+    # Convert to Galcentric + ICRS + and Get Momenta (angular.)
     d.table = galcent.nowrite_GAL_to_GALCENT(d.table)
+    d.table = galcent.nowrite_GAL_to_ICRS(d.table)
     d.table = galcentricutils.angular().get_momentum(d.table)
+
+    # Rename the awkward FeH with feh (to match LAMOST_2MASS_GAIA.py)
+    try:
+        d.table.rename_column("FeH", "feh")
+    except:
+        pass
 
     # Also get the Galcentric Polars
     d.table = galcentricutils.angular().get_polar(d.table)
+    minradius = 15
 
     # Remove stars within a certain radius. Originally used 20. Try with 15 next.
-    minradius = 15
     d.table = galcentricutils.cluster3d().r_clean(d.table, minimum_radius=minradius)
 
     # Save Tables
     print(datadir, asciiname, stringnames[n], set_raw)
     d.save(datadir, asciiname, stringnames[n], set_raw)
 
-# Stack all tables
+# Stack all tables (temporarily disabled for MSc publication, given that we manually do this with our custom LAMOST)
 windows_stack.stacking().tables()

@@ -1,3 +1,4 @@
+import copy
 import multiprocessing
 import pickle
 import time
@@ -5,7 +6,7 @@ import time
 import numpy as np
 from astropy.table import Table
 from matplotlib import pyplot as plt
-
+import astropy.units as u
 import ascii_info
 import energistics
 import graphutils
@@ -18,11 +19,11 @@ from energistics_constants import M_b, a_b, M_d, a_d, b_d, M_nfw, a_nfw, c_nfw
 if __name__ == "__main__":
 
     # Load in the "mean" percenttable and map
-    writer = hdfutils.hdf5_writer(windows_directories.datadir, ascii_info.asciiname)
+    writer = hdfutils.hdf5_writer(windows_directories.datadir, ascii_info.flatfork_asciiname)
     membership_table = writer.read_table(ascii_info.fullgroup, "percent_table_greatfitted")
 
     # Get clustering data and select for relevant data.
-    clustering_final = membership_table['greatcircle_probable_clust']
+    clustering_final = membership_table['probable_clust'] # greatcircle_
 
     with open(windows_directories.clusterdir + "\\" + "fullgroup.cluster.txt", 'rb') as f:
         clustering_prelim = pickle.load(file=f)
@@ -31,9 +32,39 @@ if __name__ == "__main__":
     table = hdfutils.hdf5_writer(windows_directories.datadir,
                                  ascii_info.asciiname).read_table(ascii_info.fullgroup,
                                                                   ascii_info.set_raw)
-    table = table[[True if d == 4 else False for d in clustering_final]]
-    print(np.max(table['r']))
-    time.sleep(5000)
+
+
+    # Grab an orbit fit
+
+    orbifit = energistics.orbifitter().flatfork_galpy_final_fitting(table,
+                                                           3,
+                                                           2000,
+                                                           0.3e9,
+                                                           1000,
+                                                           True,
+                                                           True,
+                                                           False,
+                                                           False)
+    # Forward Integral 
+    forward = copy.deepcopy(orbifit)
+    backward = copy.deepcopy(orbifit)
+    forward.integrate((np.linspace(0, 1e9, 2000)*u.yr), energistics.orbigistics().pot)
+    backward.integrate((np.linspace(0, -1e9, 2000)*u.yr), energistics.orbigistics().pot)
+    llsf, bbsf, llsb, bbsb = forward.ll((np.linspace(0, 0.7e9, 2000)*u.yr)).value, \
+                             forward.bb((np.linspace(0, 0.7e9, 2000)*u.yr)).value, \
+                             backward.ll((np.linspace(0, -0.15e9, 2000)*u.yr)).value, \
+                             backward.bb((np.linspace(0, -0.15e9, 2000)*u.yr)).value
+    lls, bbs = np.concatenate([llsf, llsb]), np.concatenate([bbsf, bbsb])
+    lls = [d - 360 if d > 180 else d for d in lls]
+
+    specgrapher = graphutils.spec_graph()
+    fig, axs = specgrapher.lb_orbits(table[[True if d == 3 else False for d in clustering_final]], 0.3e9, [-50, 180],
+                                     [-80, 55],None,
+                                     line=False,points=4000)
+    axs.scatter(lls, bbs, color='lime', marker='o', s=10)
+    plt.savefig(windows_directories.imgdir + "\\cetusplottest.png", dpi=300, transparent=True)
+    plt.show()
+    time.sleep(99999)
     #truefalse = [True if d == 5 else False for d in clustering_prelim]
     #orbigist = energistics.orbigistics()
     #table = table[truefalse]
@@ -51,21 +82,22 @@ if __name__ == "__main__":
     greatpercent_streams = [13]
     #streams_surviving_greatpercent = [1] # ,3,5,6,4,11,13,8,16
 
-    #specgrapher = graphutils.spec_graph()
+    specgrapher = graphutils.spec_graph()
 
     #graphutils.twod_graph().tripL_colour(table, 15, clustering_prelim, windows_directories.imgdir + "\\tripL_preliminary.png")
 
+    """
     # Trim noise
-    #clustering_final = np.array(clustering_final)
-    #truefalse = [False if d == -1 else True for d in clustering_final]
-    #table, clustering_final = table[truefalse], clustering_final[truefalse]
-    #graphutils.twod_graph().tripL_colour(table, 15, clustering_final, windows_directories.imgdir + "\\tripL_final.png")
+    clustering_final = np.array(clustering_final)
+    truefalse = [False if d == -1 else True for d in clustering_final]
+    tablee, clustering_final = table[truefalse], clustering_final[truefalse]
+    graphutils.twod_graph().tripL_colour(tablee, 15, clustering_final, windows_directories.imgdir + "\\tripL_final.png")
 
     clustering_prelim = np.array(clustering_prelim)
     truefalse = [False if d == -1 else True for d in clustering_prelim]
-    table, clustering_prelim = table[truefalse], clustering_prelim[truefalse]
-    graphutils.twod_graph().tripL_colour(table, 15, clustering_prelim, windows_directories.imgdir + "\\tripL_prelim.png")
-
+    tablee, clustering_prelim = table[truefalse], clustering_prelim[truefalse]
+    graphutils.twod_graph().tripL_colour(tablee, 15, clustering_prelim, windows_directories.imgdir + "\\tripL_prelim.png")
+    """
 
 
     #for stream in rest_to_skyplot:
@@ -76,19 +108,22 @@ if __name__ == "__main__":
     #    specgrapher.lb_orbits(table[[True if d == stream else False for d in clustering_final]], 0.3e9, [-180,180], [-90,90],
     #                          windows_directories.imgdir + "\\" + "finalgreatcount" + str(stream) + ".png", line=False,
     #                          points=4000)
-    """
+    """"
     specgrapher.energy_plot(table, clustering_prelim, rest_to_energyplot, [str(d) for d in rest_to_energyplot],
                             [-7000, 7000], [-150000, 0], windows_directories.imgdir + "\\streamplot_preliminary.png",
                             mcmillan=False, kpcmyr=False)
     plt.close()
     specgrapher.energy_plot(table, clustering_final, final_rest_to_energyplot, [str(d) for d in final_rest_to_energyplot],
                             [-7000,7000], [-150000,0], windows_directories.imgdir + "\\streamplot_final.png", mcmillan=False, kpcmyr=False)
-    plt.close()
+    
+    plt.close() """
+    """
     specgrapher.clust_lb_colors(table, clustering_prelim, rest_to_skyplot,
                              windows_directories.imgdir + "\\streamskytest_prelim.png", False)
     plt.close()
     specgrapher.clust_lb_colors(table, clustering_final, final_to_skyplot,
-                             windows_directories.imgdir + "\\streamskytest_final.png", False)
+                             windows_directories.imgdir + "\\streamskytest_final.png", False) """
+    """
     plt.close()
     specgrapher.clust_lb_colors(table, clustering_final, [13],
                              windows_directories.imgdir + "\\streamskytest_sagittarius.png", True) """

@@ -1,13 +1,9 @@
-import copy
 import multiprocessing
-import os
 import warnings
 from pandas import DataFrame
 import ascii_info, windows_directories
 from ascii_info import n_carlo, orbifit_saveids
 import pickle
-import numpy as np
-import graphutils
 import hdfutils
 import windows_multiprocessing
 from energistics import orbifitter
@@ -22,7 +18,7 @@ Estimate purely based on 200 sets instead of 1,000 due to time constraints (it t
 warnings.filterwarnings("ignore", message="Loky-backed parallel loops cannot be called in a multiprocessing, setting n_jobs=1")
 
 # Holder for whether to generate orbits or not. If False, use old orbits.
-should_run = False
+should_run = True
 
 # Decide group and the clusters to cluster
 group = ascii_info.fullgroup
@@ -51,6 +47,8 @@ if __name__ == "__main__":
     import time
     time.sleep(10)
 
+#clusters_to_orbifit = ascii_info.flatfork_clusters_to_maindata_orbifit
+
 # The saveids
 saveids = orbifit_saveids
 
@@ -59,7 +57,7 @@ if __name__ == "__main__" and should_run == True:
 
     # Grab the table
     table = hdfutils.hdf5_writer(windows_directories.datadir,
-                                 ascii_info.asciiname).read_table(ascii_info.fullgroup,
+                                 ascii_info.flatfork_asciiname).read_table(ascii_info.fullgroup,
                                                                   ascii_info.fullset)
 
     # Grab the elements-of-interest
@@ -70,7 +68,7 @@ if __name__ == "__main__" and should_run == True:
 
     try:
 
-        with open(windows_directories.datadir + "\\subtableorbits.txt", 'rb') as f:
+        with open(windows_directories.datadir + "\\flatfork_subtableorbits.txt", 'rb') as f:
             tables = pickle.load(file=f)
             tables = tables[0:n_carlo]
             print("Loaded")
@@ -91,7 +89,7 @@ if __name__ == "__main__" and should_run == True:
         pool.close()
 
         # Try to save the table
-        with open(windows_directories.datadir + "\\subtableorbits.txt", 'wb') as f:
+        with open(windows_directories.datadir + "\\flatfork_subtableorbits.txt", 'wb') as f:
             pickle.dump(file=f, obj=tables)
 
     # Parameters for multiprocessing
@@ -106,9 +104,9 @@ if __name__ == "__main__" and should_run == True:
                              1e9,
                              2000])
 
-    # Run the pool!
+    # Run the pool! For preliminaries first
     pool = multiprocessing.Pool(8)
-    results = pool.map(windows_multiprocessing.do_orbifit, parameterss)
+    results = pool.map(windows_multiprocessing.flatfork_do_orbifit, parameterss)
     pool.close()
 
     # Set the ran
@@ -136,6 +134,23 @@ if should_run == False and __name__ == "__main__": # False:
     list_of_stats = pool.map(windows_multiprocessing.flatfork_do_orbistatistics, clusters_to_orbifit)
     pool.close()
 
+    # Iterate over the list of stats
+    for stats in list_of_stats:
+
+        # Section stats
+        ees, meanee, stdee, \
+        periggs, meanpg, stdpg, \
+        EEs, meanEE, stdEE, \
+        Lzs, meanLz, stdLz, \
+        apoggs, meanapog, stdapog = stats
+
+        # Append the stats
+        eesTT.append(ees), meaneeTT.append(meanee), stdeeTT.append(stdee), \
+        periggsTT.append(periggs), meanpgTT.append(meanpg), stdpgTT.append(stdpg), \
+        EEsTT.append(EEs), meanEETT.append(meanEE), stdEETT.append(stdEE), \
+        LzsTT.append(Lzs), meanLzTT.append(meanLz), stdLzTT.append(stdLz), \
+        apoggsTT.append(apoggs), meanapogTT.append(meanapog), stdapogTT.append(stdapog)
+
     # Set up column data
     all_data = [clusters_to_orbifit,
                 meaneeTT, meanpgTT, meanEETT, meanLzTT, meanapogTT,
@@ -144,7 +159,7 @@ if should_run == False and __name__ == "__main__": # False:
     colss = ['cluster',
              'e', 'peri', 'E', 'Lz', 'apo',
              'e_std', 'peri_std', 'E_std', 'Lz_std', 'apo_std',
-             'e_data', 'peri_data', 'E_data', 'Lz_data', 'apo_data', ]
+             'e_data', 'peri_data', 'E_data', 'Lz_data', 'apo_data']
 
     # All done- save the df
     df = DataFrame(columns=colss)
@@ -152,5 +167,5 @@ if should_run == False and __name__ == "__main__": # False:
         df[col] = data
 
 
-    writer = hdfutils.hdf5_writer(windows_directories.datadir, ascii_info.asciiname)
+    writer = hdfutils.hdf5_writer(windows_directories.datadir, ascii_info.flatfork_asciiname)
     writer.write_df("greatfit_monte_orbistatistics", "data", df)

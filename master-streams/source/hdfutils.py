@@ -57,6 +57,7 @@ class hdf5_writer(object):
                         print("All ARRAY WRITING methods failed... " + str(e) + "..." + group + "_" + dataset)
                         os.chdir(self.owd)
     # Write single strings, duplicate of above. Split to save processing power since usage of strings isn't likely.
+    # THIS IS BROKEN FIX IT!!!
     def writestr(self, group, dataset, string):
         os.chdir(self.directory)
         with h5py.File(self.filename, 'a') as f:
