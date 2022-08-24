@@ -137,10 +137,10 @@ if plotfit == True:
     orbifit = orbifitter()
     specgrapher = graphutils.spec_graph()
     #clusters_to_try = np.arange(0, numclust, 1)
-    maindata_clusters_to_try = []
-    for cluster in clustered:
-        if cluster not in maindata_clusters_to_try:
-            maindata_clusters_to_try.append(cluster)
+
+    # Get the unique clusters in this (save noise.)
+    max_clust = np.max(clustered)
+    maindata_clusters_to_try = np.arange(0, max_clust+1, 1)
 
     for cluster in maindata_clusters_to_try:
 

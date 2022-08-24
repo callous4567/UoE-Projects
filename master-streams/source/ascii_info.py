@@ -52,13 +52,10 @@ fulldata_minpar_L4D = fulldata_minpar
 fulldata_minpar_LE = fulldata_minpar
 minpars_allgroups = [bhb_minpar, gcs_minpar, kgiant_minpar, lamostk_minpar]
 
-# Selected clusterings
-#clusters_to_cluster = [1,5,4,2,11,6] # manually specify (this will be called in manually.) # moved to asciiinfo
-#gcc_widths = [12.5, 15, 15, 25, 35, 20] # manually specify by-eye. TODO: Automate.
-clusters_to_cluster = [6, 11, 2, 8, 13, 9, 3, 1, 12, 4, 5, 0, 10]
-gcc_widths = [30, 15, 20, 25, 40, 20, 30, 15, 20, 20, 30, 25, 30]
-clusters_to_orbifit = [1, 3, 5, 6, 8, 13]
+# ID for the GSE in the flatfork
 flatfork_GSE_ID = 23
+
+# Custom-set the range for orbifits/etc
 import numpy as np
 clusters_to_maindata_orbifit = np.arange(0,24,1)
 flatfork_clusters_to_maindata_orbifit = np.arange(0,24,1)

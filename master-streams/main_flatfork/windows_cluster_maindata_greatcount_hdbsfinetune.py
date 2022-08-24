@@ -80,11 +80,23 @@ if __name__ == "__main__":
         "greatcircles_nonmemberpercent_preliminary",
         "greatcircles")
     greattable['max_dist'] += 1
-    max_clust = np.max(table['prelim_clust'])
+    clustered = table['prelim_clust']
+
+    # Choose clusts to finetune
+    clusts_to_finetune = []
+    for clust in list(set(clustered)):
+
+        if clust not in clusts_to_finetune:
+
+            if clust != -1:
+
+                # Only bother if smaller than 10% fraction (i.e. Sgr/etc)
+                if len(np.where(clustered==clust)[0])/len(clustered) < 0.1:
+
+                    clusts_to_finetune.append(clust)
 
     # Get GCC tables/indices/etc
     gcc_tables = []
-    clusts_to_finetune = np.arange(0, max_clust+1, 1)
     finetuneargs_lists = []
 
     # Set up the finetune dir

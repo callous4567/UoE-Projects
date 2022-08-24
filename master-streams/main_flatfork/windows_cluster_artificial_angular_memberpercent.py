@@ -24,7 +24,7 @@ for saveid in saveids:
 clustray = np.array(clusterings)
 
 # Work it. probable_clust gives the most probabilistic cluster designation, probability is the probability of it
-mapped, memberships = compclust.compclust_multipercentage(clusterings, maximum_cluster=np.max(clustray))
+mapped, memberships = compclust.compclust_multipercentage(clustray, maximum_cluster=np.max(clustray))
 # Save it
 writer = hdfutils.hdf5_writer(windows_directories.datadir, ascii_info.flatfork_asciiname)
 writer.write_table(ascii_info.fullgroup, "percent_table", mapped)

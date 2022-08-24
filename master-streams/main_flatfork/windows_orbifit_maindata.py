@@ -24,7 +24,8 @@ should_run = False
 
 # Decide group and the clusters to cluster
 group = ascii_info.fullgroup
-clusters_to_orbifit = ascii_info.flatfork_clusters_to_maindata_orbifit
+import windows_plot_orbifits_maindata
+clusters_to_orbifit = windows_plot_orbifits_maindata.clusters_to_orbifit
 
 # The saveids
 saveids = ascii_info.flatfork_orbifit_maindata_saveids

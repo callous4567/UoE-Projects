@@ -13,11 +13,17 @@ table = hdfutils.hdf5_writer(windows_directories.datadir,
 clustered = np.array(table['prelim_clust'], int)
 numclust = galcentricutils.compclust().nclust_get(clustered)
 
-# Get the unique clusters in this
+# Choose clusts to try greatcount clustering for
 clusters_to_try = []
-for clust in clustered:
+for clust in list(set(clustered)):
+
     if clust not in clusters_to_try:
-        clusters_to_try.append(clust)
+
+        if clust != -1:
+
+            # Only bother if smaller than 10% fraction (i.e. Sgr/etc)
+            if len(np.where(clustered == clust)[0]) / len(clustered) < 0.1:
+                clusters_to_try.append(clust)
 
 # Define the "threshold" for a cluster to be considered (the number of populated clusts: see cluster_comparison.)
 clust_threshold = 4

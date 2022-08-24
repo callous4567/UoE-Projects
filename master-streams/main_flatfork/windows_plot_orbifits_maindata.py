@@ -47,7 +47,7 @@ writer = hdfutils.hdf5_writer(windows_directories.datadir, ascii_info.flatfork_a
 
 # Grab the data you're going to use
 table = hdfutils.hdf5_writer(windows_directories.datadir,
-                             ascii_info.asciiname).read_table(ascii_info.fullgroup,
+                             ascii_info.flatfork_asciiname).read_table(ascii_info.fullgroup,
                                                               ascii_info.set_raw)
 
 # Prelim clust

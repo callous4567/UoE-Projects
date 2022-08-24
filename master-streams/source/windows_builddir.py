@@ -140,3 +140,5 @@ class dirbuilder(object):
             os.mkdir(os.path.join(windows_directories.imgdir, "flatfork_vasiliev"))
         except:
             pass
+
+# dirbuilder()

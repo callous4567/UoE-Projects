@@ -815,6 +815,68 @@ def flatfork_greatcircle_optimize(parameterss):
     # Return
     return best_circle, pole_stdev, pole_maxdist
 
+def flatfork_greatcircle_optimize_memberpercent(parameterss):
+
+    real_dist, which_try, table_included, clustered_included, pole_thetas, pole_phis, resolution = parameterss
+
+    greatfit = galcentricutils.greatfit()
+
+    # Little catching specification for specific clusters (to allow specification on real_dist per-cluster.)
+    real_dist_local = real_dist
+
+    # In this case, just do least-squares minimization
+    if real_dist_local == True:
+
+        least_squares = []
+
+        for theta_pole, phi_pole in zip(pole_thetas, pole_phis):
+            leastsq = greatfit.least_squares(table_included['theta'], table_included['phi'], theta_pole, phi_pole,
+                                             resolution, real_dist_local)
+            least_squares.append(leastsq)
+
+        best_circle = np.argmin(least_squares)
+        best_circle = np.array([pole_thetas[best_circle], pole_phis[best_circle]])
+
+
+    # In this case, maximize the number of stars within real_dist of a greatcircle
+    else:
+
+        least_squares = []
+
+        for theta_pole, phi_pole in zip(pole_thetas, pole_phis):
+            leastsq = greatfit.least_squares(table_included['theta'], table_included['phi'], theta_pole, phi_pole,
+                                             resolution, real_dist_local)
+            least_squares.append(leastsq)
+
+        best_circle = np.argmax(
+            least_squares)  # argmax, to mamimize the membership of these cluster members (using a real_dist- see greatfit.least_squares())
+        best_circle = np.array([pole_thetas[best_circle], pole_phis[best_circle]])
+
+    # Take best_circle and obtain the width of the GCC (i.e. get the maximum distance, on the sky, from the GCC.
+    std_dist, max_dist = greatfit.deviation_from_gc(table_included['theta'], table_included['phi'], best_circle[0],
+                                                    best_circle[1], resolution)
+
+    pole_stdev = np.rad2deg(std_dist)
+    pole_maxdist = np.rad2deg(max_dist)
+
+    # Go forth and plot the greatcircle against the data, in ra/dec.
+    try:
+        graphutils.spec_graph().clust_thetaphi(table=table_included, clustering=clustered_included,
+                                               cluster_id=which_try,
+                                               vasiliev=False, savedexdir="flatfork_greatcount_" +
+                                                                          str(which_try) + "_thetaphi_greatcircle",
+                                               gcc_thetaphis=greatfit.gcc_gen(1000, *best_circle),
+                                               flatfork=True)
+        import matplotlib.pyplot as plt
+        plt.close()
+        plt.clf()
+    except Exception as e:
+        print(e)
+        pass
+
+    # Return
+    return best_circle, pole_stdev, pole_maxdist
+
 # Factor by which to multiply max_clust_size of the GSE (to prevent central clumps being caught by GSE.)
 massive_factor = 1.1
 def flatfork_do_finetune(args):

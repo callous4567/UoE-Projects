@@ -42,10 +42,20 @@ if __name__ == "__main__":
     clustered = np.array(table['prelim_clust'], int)
     numclust = galcentricutils.compclust().nclust_get(clustered)
 
-    # Set up the clust range
-    clustrange = np.arange(0, np.max(table['prelim_clust']) + 1, 1)
+    # Choose clusts to try greatcount clustering for
+    clusters_to_try = []
+    for clust in list(set(clustered)):
+
+        if clust not in clusters_to_try:
+
+            if clust != -1:
+
+                # Only bother if smaller than 10% fraction (i.e. Sgr/etc)
+                if len(np.where(clustered==clust)[0])/len(clustered) < 0.1:
+
+                    clusters_to_try.append(clust)
     greattable_indices = [
-        np.where(greattable['clust_to_try']==clust)[0][0] for clust in clustrange
+        np.where(greattable['clust_to_try']==clust)[0][0] for clust in clusters_to_try
     ]
     best_minpars = greattable['best_samples'][greattable_indices]
     best_minpars = [[ascii_info.fulldata_minpar[0], min_samples] for min_samples in best_minpars]
@@ -55,7 +65,7 @@ if __name__ == "__main__":
     greatpars = np.array([widths,thetas,phis]).T
     arrayinfominpars = []
     for saveid in ascii_info.duplimonte_LXYZ_saveids:
-        arrayinfominpars.append([[group,saveid],best_minpars,clustrange, greatpars])
+        arrayinfominpars.append([[group,saveid],best_minpars,clusters_to_try, greatpars])
 
     # Regularly map/pool :)
     pool = multiprocessing.Pool(4)

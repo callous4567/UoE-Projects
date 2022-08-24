@@ -1,6 +1,5 @@
 import copy
 import pickle
-import time
 import numba
 import pandas
 import munkres
@@ -28,7 +27,7 @@ import hdbscan
 import windows_directories
 
 # Inclusion of Julia (for certain functions)
-from juliacall import Main, convert
+from juliacall import Main
 Main.include(os.path.join(windows_directories.jl_dir, "munkres.jl"))
 #from julia import Main
 #Main.include(os.path.join(windows_directories.jl_dir, "munkres.jl"))

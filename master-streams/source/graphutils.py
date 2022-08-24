@@ -28,9 +28,6 @@ from matplotlib import cm, rc, colors
 # Plotly
 import plotly.express as px
 import plotly.io as plio
-
-
-
 plio.renderers.default = 'browser'
 import plotly.graph_objects as go
 

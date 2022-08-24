@@ -24,14 +24,21 @@ if just_plot == False and __name__ == "__main__":
     clustered = np.array(table['prelim_clust'], int)
     numclust = galcentricutils.compclust().nclust_get(clustered)
 
-    # Get the unique clusters in this
+    # Get the unique clusters in this (save noise)
     clusters_to_try = []
-    for clust in clustered:
+    for clust in list(set(clustered)):
+
         if clust not in clusters_to_try:
-            clusters_to_try.append(clust)
+
+            if clust != -1:
+
+                # Only bother if smaller than 10% fraction (i.e. Sgr/etc)
+                if len(np.where(clustered==clust)[0])/len(clustered) < 0.1:
+
+                    clusters_to_try.append(clust)
 
     # Generate the grid of great circles to try for the "first pass."
-    grid_edge_length = 1600 # number of GCC poles to generate
+    grid_edge_length = 800 # number of GCC poles to generate
     resolution = 800 # number of datapoints to generate in GCC
     pole_thetas, pole_phis, pole_indices = greatcount().fullgridgen(np.rint(grid_edge_length**2, casting='unsafe'))
     pole_thetas, pole_phis = np.degrees(pole_thetas), np.degrees(pole_phis)
@@ -63,7 +70,11 @@ if just_plot == False and __name__ == "__main__":
     pool.close()
 
     # Format results from results
-    poles_found, poles_stdevs, poles_maxdists = np.array(results).T
+    poles_found, poles_stdevs, poles_maxdists = [],[],[]
+    for result in results:
+        poles_found.append(result[0])
+        poles_stdevs.append(result[1])
+        poles_maxdists.append(result[2])
 
     # Save the best_circles to a table (non-memberpercent).
     writer = hdfutils.hdf5_writer(windows_directories.datadir, ascii_info.flatfork_asciiname)
@@ -89,12 +100,18 @@ if just_plot == True and __name__ == "__main__":
                                  ascii_info.flatfork_asciiname).read_table("greatcircles_nonmemberpercent_preliminary",
                                                                            "greatcircles")
 
-    # Get the unique clusters in this
+    # Get the unique clusters in this (save noise)
     clusters_to_try = []
-    for clust in clustered:
+    for clust in list(set(clustered)):
+
         if clust not in clusters_to_try:
-            clusters_to_try.append(clust)
-    print(clusters_to_try)
+
+            if clust != -1:
+
+                # Only bother if smaller than 10% fraction (i.e. Sgr/etc)
+                if len(np.where(clustered==clust)[0])/len(clustered) < 0.1:
+
+                    clusters_to_try.append(clust)
 
     # Generate the grid of great circles to try for the "first pass."
     grid_edge_length = 400  # number of GCC poles to generate

@@ -23,11 +23,17 @@ clustered = percent_table['probable_clust']
 #with open(windows_directories.clusterdir + "\\" + "fullgroup.cluster.txt", 'rb') as f:
 #    clustered = pickle.load(file=f)
 
-# Get the unique clusters in this
+# Choose clusts to try greatcount clustering for
 clusters_to_try = []
-for clust in clustered:
+for clust in list(set(clustered)):
+
     if clust not in clusters_to_try:
-        clusters_to_try.append(clust)
+
+        if clust != -1:
+
+            # Only bother if smaller than 10% fraction (i.e. Sgr/etc)
+            if len(np.where(clustered == clust)[0]) / len(clustered) < 0.1:
+                clusters_to_try.append(clust)
 
 # Set up data
 table = hdfutils.hdf5_writer(windows_directories.datadir,
