@@ -1,8 +1,8 @@
 # Function to iterate over the provided list
 from astroquery.gaia import Gaia
 import pickle
-username = "sstrasza"
-password = "CENT@rino4657898"
+username = 
+password = 
 Gaia.login(user=username,
            password=password)
 
