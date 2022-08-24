@@ -24,7 +24,7 @@ if run_rave == True:
 
     service_name = 'rave-survey.org' # set up tap
     url = "https://www.rave-survey.org/tap"
-    token = "387e0bbae743459bf29744ebf1c436ee6cbc48d9"
+    token = 
 
     # Setup authorization
     tap_session = requests.Session()
