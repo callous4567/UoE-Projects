@@ -15,7 +15,7 @@ for saveid in ascii_info.duplimonte_saveids:
 # Regularly map/pool :)
 if __name__ == '__main__':
     pool = multiprocessing.Pool(8)
-    results = pool.map(windows_multiprocessing.flatfork_do_hdbscan, arrayinfominpars)
+    results = pool.map(windows_multiprocessing.finetune_do_hdbscan, arrayinfominpars)
     pool.close()
 
 

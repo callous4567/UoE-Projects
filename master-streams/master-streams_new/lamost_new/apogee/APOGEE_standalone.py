@@ -31,3 +31,5 @@ def radecmatch(ra1, dec1, ra2, dec2):
     return Main.radecmatch(ra1, dec1, ra2, dec2)
 def radecmatch_argmin(ra1, dec1, ra2, dec2):
     return Main.radecmatch_argmin(ra1, dec1, ra2, dec2)
+def radecmatch_argmin_memlim(ra1, dec1, ra2, dec2):
+    return Main.radecmatch_argmin_memlim(ra1, dec1, ra2, dec2)

@@ -32,7 +32,6 @@ import os
 owd = os.getcwd()
 from galcentricutils import greatcount, compclust, cluster3d
 import numpy as np
-from hdbscan import HDBSCAN, prediction, flat
 import hdfutils
 import windows_directories
 import ascii_info
@@ -71,14 +70,14 @@ if __name__ == "__main__":
     c3d.sizediflim = 2
 
     # Grab table + greattable
-    table = hdfutils.hdf5_writer(windows_directories.datadir,
-                                 ascii_info.flatfork_asciiname).read_table(ascii_info.fullgroup,
-                                                                  ascii_info.fullset)
+    writer = hdfutils.hdf5_writer(windows_directories.datadir,
+                                  ascii_info.finetune_asciiname)
+    table = writer.read_table(ascii_info.fullgroup,ascii_info.fullset)
 
-    greattable = hdfutils.hdf5_writer(windows_directories.datadir,
-                                             ascii_info.flatfork_asciiname).read_table(
+    greattable = writer.read_table(
         "greatcircles_nonmemberpercent_preliminary",
-        "greatcircles")
+        "greatcircles"
+    )
     greattable['max_dist'] += 1
     clustered = table['prelim_clust']
 
@@ -101,7 +100,7 @@ if __name__ == "__main__":
 
     # Set up the finetune dir
     try:
-        os.mkdir(os.path.join(windows_directories.imgdir, "flatfork_finetune"))
+        os.mkdir(os.path.join(windows_directories.imgdir, "finetune_finetune"))
     except:
         pass
 
@@ -122,7 +121,7 @@ if __name__ == "__main__":
     import multiprocessing
     import windows_multiprocessing
     pool = multiprocessing.Pool(8)
-    results = pool.map(windows_multiprocessing.flatfork_do_finetune, zipped)
+    results = pool.map(windows_multiprocessing.finetune_do_finetune, zipped)
     pool.close()
 
     # Array up
@@ -144,8 +143,8 @@ if __name__ == "__main__":
 
     # Write
     greattable['max_dist'] -= 1
-    hdfutils.hdf5_writer(windows_directories.datadir,
-                                             ascii_info.flatfork_asciiname).write_table(
+    writer.write_table(
         "greatcircles_nonmemberpercent_preliminary",
         "greatcircles",
-        greattable)
+        greattable
+    )

@@ -4,14 +4,16 @@ from astropy.table import Table
 import windows_directories_new
 
 load = True
-dr7dir = os.path.join(windows_directories_new.lamodir, "dr7_LRS_vat.fits")
+
 dr4dir = os.path.join(windows_directories_new.lamodir, "LAMOST_value_addcat_DR4.fits")
-with fits.open(dr7dir, mode='readonly', memmap=True) as hdul:
-    # Data (which is an astropy table when loaded.)
-    dr7data = hdul[1].data
+dr7dir = os.path.join(windows_directories_new.lamodir, "dr7_LRS_vat.fits")
+
 with fits.open(dr4dir, mode='readonly', memmap=True) as hdul:
     # Data (which is an astropy table when loaded.)
     dr4data = hdul[1].data
+with fits.open(dr7dir, mode='readonly', memmap=True) as hdul:
+    # Data (which is an astropy table when loaded.)
+    dr7data = hdul[1].data
 
 if load != True:
 
@@ -23,8 +25,13 @@ if load != True:
     ra1, dec1, ra2, dec2 = dr7data_subset['ra'], dr7data_subset['dec'], dr4data['RA'], dr4data['DEC']
     ra1, dec1, ra2, dec2 = np.radians(ra1), np.radians(dec1), np.radians(ra2), np.radians(dec2)
 
-    from APOGEE_standalone import radecmatch_perfect
-    matches,found = radecmatch_perfect(ra1, dec1, ra2, dec2)
+    dr4data, dr7data = None, None
+
+    from APOGEE_standalone import radecmatch_argmin_memlim
+    matches, truefalse = radecmatch_argmin_memlim(ra1, dec1, ra2, dec2)
+    matches, truefalse = list(matches), list(truefalse)
+    matches, truefalse = np.asarray(matches), np.asarray(truefalse)
+    found = np.where(truefalse==True)[0]
     import pickle
     with open(os.path.join(windows_directories_new.lamodir, "matchfound.txt"), 'wb') as f:
         pickle.dump(obj=[selection, matches, found], file=f)
@@ -33,14 +40,25 @@ if load != True:
 
 if load == True:
 
+    with fits.open(dr4dir, mode='readonly', memmap=True) as hdul:
+        # Data (which is an astropy table when loaded.)
+        dr4data = hdul[1].data
+    with fits.open(dr7dir, mode='readonly', memmap=True) as hdul:
+        # Data (which is an astropy table when loaded.)
+        dr7data = hdul[1].data
+
     import pickle
     import numpy as np
     with open(os.path.join(windows_directories_new.lamodir, "matchfound.txt"), 'rb') as f:
         selection, matches, found = pickle.load(file=f)
 
     # Clip the matches/etc/data/etc
+    matches = matches.T[1]
     dr7data_subset = dr7data[selection][found]
     dr4data = dr4data[matches][found]
+    truefalse = np.where(dr4data['DIST']>0.1)[0]
+    dr7data_subset=dr7data_subset[truefalse]
+    dr4data=dr4data[truefalse]
 
     dr4data['DIST']/=1000
     dr4data['ERR_DIST']/=1000
@@ -102,7 +120,7 @@ if load == True:
                                                   savepath,
                                                   lim)
 
-    do_correlation_plots(dr7data_subset, dr4data,
+    do_correlation_plots(dr7data_subset,dr4data,
                          columns, columns_errs,
                          columns_2, columns_errs_2,
                          labels, labels,

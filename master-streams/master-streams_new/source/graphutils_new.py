@@ -319,9 +319,6 @@ class twod_graph(object):
         axs.grid(which='major', color='pink')
         axs.set(xlabel=xlabel + " old", ylabel=ylabel + " new")
 
-        # Produce a "background plot" 1:1 with val1 such that y=x
-        plt.plot(val1, val1, color='black', alpha=0.5)
-
         # Limits
         if lims != None:
             axs.set(xlim=lims[0], ylim=lims[1])
@@ -335,6 +332,9 @@ class twod_graph(object):
 
         # Plot the values
         axs.errorbar(val1, val2, xerr=val1err, yerr=val2err, color='black', ecolor='red', marker='x', ls='none', elinewidth=0.2)
+
+        # Produce a "background plot" 1:1 with val1 such that y=x
+        plt.plot(val1, val1, color='pink', alpha=1)
 
         # Save or return
         if savepath == None:

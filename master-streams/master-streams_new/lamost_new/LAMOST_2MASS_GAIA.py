@@ -261,7 +261,7 @@ if __name__ == "__main__" and LAMOST_2MASS == True:
 # Should I subtract globular clusters & set up galactocentric coordinates?
 do_galcent_gcs = False
 produce_data = False
-plot = True
+plot = False
 min_radius = 15
 max_radius = 150 # same as orbigistics interpolator for circularity
 final_dir = os.path.join(windows_directories_new.lamodir, "LAMOST_master_2MASS.fits")
@@ -525,9 +525,9 @@ if __name__ == "__main__" and do_finalstack == True:
 
     except:
 
-        from APOGEE_standalone import radecmatch
+        from APOGEE_standalone import radecmatch_argmin_memlim
 
-        matches, truefalse = radecmatch(lamokgs_ra, lamokgs_dec, data_ra, data_dec)
+        matches, truefalse = radecmatch_argmin_memlim(lamokgs_ra, lamokgs_dec, data_ra, data_dec)
         matches, truefalse = list(matches), list(truefalse)
         matches, truefalse = np.asarray(matches), np.asarray(truefalse)
 
@@ -654,78 +654,102 @@ if __name__ == "__main__" and do_cuts == True:
     # QUALITY CUTS ======================================^^^^
     from galcentricutils_quality_cuts import quality_cuts
     qcs = quality_cuts()
-    qcs.fancy_LSR_cut(data, 100, "apolamost_fancy_LSR")
-    qcs.LSR_cut(data, 220, "just_LSR")
-    qcs.fancy_feh_cut(data, "apolamost_fancy_FeH")
-    data = data[qcs.zmax_cuts(data, 5/2,
-                              3e9,
-                              3000,
-                              True,
-                              True,
-                              "lamost_dr7_cuts.txt",
-                              "test_ZMAX")]
     metmax = -1/2
-    data = data[qcs.fancy_feh_cut(data, "apolamost_fancy_FeH")]
-    data = data[qcs.feh_cut(data, metmax)]
-    vphi_plotlims = [-550,550]
-    data = data[qcs.bound_cut(data)]
-    # QUALITY CUTS ======================================^^^^
+    LSR_VEL = 220
+    FANCY_LSR_VEL = 100
+    ZMAX = 5/2
+    vphi_plotlims = [-550, 550]
 
-    # Get galcentric cylindrical from the data subselection
+    # Get indices for all the cuts necessary (from the original) dataset- for illustration purposes
+    FSLR_KEEP, FSLR_REMOVE = qcs.fancy_LSR_cut(data, FANCY_LSR_VEL)
+    RLSR_KEEP, RSLR_REMOVE = qcs.LSR_cut(data, LSR_VEL)
+    FFEH_KEEP, FFEH_REMOVE = qcs.fancy_feh_cut(data)
+    RFEH_KEEP, RFEH_REMOVE = qcs.feh_cut(data, metmax)
+    ZMAX_KEEP, ZMAX_REMOVE = qcs.zmax_cuts(data, ZMAX,
+                                 3e9,
+                                 3000,
+                                 True,
+                                 True,
+                                 "lamost_dr7_cuts_fulldata.txt")
+    BOND_KEEP, BOND_REMOVE = qcs.bound_cut(data)
+    indices_lists = [FSLR_KEEP, RLSR_KEEP, FFEH_KEEP, RFEH_KEEP, ZMAX_KEEP, BOND_KEEP]
+    remove_lists = [FSLR_REMOVE, RSLR_REMOVE, FFEH_REMOVE, RFEH_REMOVE, ZMAX_REMOVE, BOND_REMOVE]
+    indices_names = ["fancy_LSR", "regular_LSR", "fancy_feh", "regular_feh", "zmax", "bound"]
+
+    # Get vT/etc anticipating plotting
     from energistics_new import orbigistics
     R, vR, vT, z, vz, phi = orbigistics().get_leftgalpy(data)
-
-    # With this selection, produce Figure 1 from the "Halo Substructure in the SDSS: streams and clumps"
     feh = data['feh']
+
     import matplotlib.pyplot as plt
-    fig, axs = plt.subplots(nrows=1, ncols=1)
-    axs.set(xlim=vphi_plotlims,
-            ylim=[-5/2,metmax])
-    axs.grid(True, which='major', color='pink')
-    axs.set_facecolor("k")
-    axs.set(xlabel=r'$\textrm{v}_\phi$',
-            ylabel=r'$[\textrm{Fe/H}]$')
-    axs.scatter(vT, feh, s=0.1, color='red')
-    plt.savefig(os.path.join(qcs.savedir, "finalstack_LAMOST_metplot.png"), dpi=300)
-    plt.show()
+    for keep, remove, cut_type in zip(indices_lists, remove_lists, indices_names):
+
+        fig, axs = plt.subplots(nrows=1, ncols=1)
+        axs.set(xlim=vphi_plotlims,
+                ylim=[-5 / 2, metmax])
+        axs.grid(True, which='major', color='pink')
+        axs.set(xlabel=r'$\textrm{v}_\phi$',
+                ylabel=r'$[\textrm{Fe/H}]$')
+
+        # Get the data we aren't cutting out + plot it
+        VT_PLOT, FEH_PLOT = vT[keep], feh[keep]
+        axs.scatter(VT_PLOT, FEH_PLOT, s=0.1, color='green')
+
+        # Get the data we are cutting + plot it
+        VT_PLOT, FEH_PLOT = vT[remove], feh[remove]
+        axs.scatter(VT_PLOT, FEH_PLOT, s=0.1, color='red')
+
+        plt.savefig(os.path.join(qcs.savedir, "finalstack_LAMOST_metplot_" + cut_type + ".png"), dpi=300)
 
     # Get non-lamost indices, recombine to LAMOST_sstraszak indices, to reclaim whole dataset
-    no_indices = []
-    for i in range(len(orig_data)):
-        if orig_data[i]['source'] != "LAMOST_sstraszak":
-            no_indices.append(i)
+    no_indices = np.where(orig_data['source'] != "LAMOST_sstraszak")[0]
     orig_data = orig_data[no_indices]
     orig_data = vstack([orig_data, data])
 
     """
     # While we're at it, also grab the APOGEE data we obtained
     with fits.open(apogee_starhorse_path_nogcs, mode='readonly', memmap=True) as hdul:
-        # Data (which is an astropy table when loaded.)
+
         apodata = Table(hdul[1].data)
-        apodata = apodata[[True if vv < 600 else False for vv in np.sqrt(apodata['vx']**2 +
-                                                                          apodata['vy']**2 +
-                                                                          apodata['vz']**2)]]
         apodata = apodata[[True if r < 150 else False for r in apodata['r']]]
         apodata['source'] = "APOGEE_sstraszak"
-        apodata = apodata[qcs.zmax_cuts(apodata, 4,
-                                  3e9,
-                                  3000,
-                                  True,
-                                  True,
-                                  "apogee_LAMOST_final.txt")]
-        apodata = apodata[qcs.feh_cut(apodata, metmax)]
-        apodata = apodata[qcs.bound_cut(apodata)]
+        orig_data = vstack([orig_data, apodata]) """
 
-    # Stack it with our data
-    orig_data = vstack([orig_data, apodata])
-    """
+    # Generate base plot for debug
+    R, vR, vT, z, vz, phi = orbigistics().get_leftgalpy(orig_data)
+    orig_data['vT'] = vT
+    plt.scatter(vT, orig_data['feh'], s=0.1)
+    plt.ylim([-3,1])
+    plt.savefig(os.path.join(qcs.savedir, "orig_data_beforecuts.png"), dpi=300)
 
-    # QUALITY CUTS ======================================^^^^
-    orig_data = orig_data[qcs.fancy_LSR_cut(orig_data, 100)]
-    # QUALITY CUTS ======================================^^^^
+    # Carry out cuts on orig_data (the full dataset) in anticipation of use
+    # noinspection PyRedeclaration
+    KEEP, REMOVE = qcs.fancy_LSR_cut(orig_data, FANCY_LSR_VEL)
+    orig_data = orig_data[KEEP]
+    # noinspection PyRedeclaration
+    KEEP, REMOVE = qcs.zmax_cuts(orig_data, ZMAX,
+                                 3e9,
+                                 3000,
+                                 True,
+                                 True,
+                                 "lamost_dr7_cuts_origdata.txt")
+    orig_data = orig_data[KEEP]
+    plt.clf()
+    plt.close()
+    plt.cla()
+    plt.scatter(orig_data['vT'], orig_data['feh'], s=0.1)
+    plt.xlim([-500,500])
+    plt.ylim([-3,1])
+    print("Showing")
+    plt.show()
+    # noinspection PyRedeclaration
+    #KEEP, REMOVE = qcs.fancy_feh_cut(orig_data)
+    #orig_data = orig_data[KEEP]
+
 
     # Save data to fits
     orig_data.write(cuts_fits_path, overwrite=True)
+
 
     # Write data to table
     import hdfutils
@@ -736,13 +760,17 @@ if __name__ == "__main__" and do_cuts == True:
     data_array = np.array([orig_data['Lx'],orig_data['Ly'],orig_data['Lz']]).T
     from hdbscan import flat
     clusterer = flat.HDBSCAN_flat(X=data_array,
-                                  n_clusters=24,
-                                  min_cluster_size=9,
-                                  max_cluster_size=int(0.5*len(orig_data)),
-                                  min_samples=9,
+                                  n_clusters=40,
+                                  min_cluster_size=10,
+                                  max_cluster_size=int(0.4*len(orig_data)),
+                                  min_samples=7,
                                   metric='l2',
                                   algorithm='best')#,
                                   #prediction_data=False)
+    set_of_labels = list(set(clusterer.labels_))
+    sizes = [len(np.where(clusterer.labels_==d)[0]) for d in set_of_labels]
+    sorted_sizes = np.sort(sizes, axis=0)
+    GSE_SIZE = np.flip(sorted_sizes)[1]
 
     # Take our cleaned data sample and produce angular plot
     savepath = os.path.join(qcs.savedir, "kmeans_L_LAMOGEEFINAL_test.html")
@@ -753,3 +781,70 @@ if __name__ == "__main__" and do_cuts == True:
                                                       True,
                                                       True)
 
+    # Savedir
+    savedir = os.path.join(qcs.savedir, "orbifits_tests")
+    try:
+        os.mkdir(savedir)
+    except:
+        pass
+
+    # For all our clusters found :3
+    run_orbifitplots = False
+    if run_orbifitplots == True:
+
+        for clust in list(set(clusterer.labels_)):
+            import energistics, graphutils
+            orbifit = energistics.orbifitter().finetune_galpy_fitting_nomemb(orig_data,
+                                                                             clusterer.labels_,
+                                                                             clust,
+                                                                             2000,
+                                                                             0.6e9,
+                                                                             1000,
+                                                                             False,
+                                                                             False,
+                                                                             False,
+                                                                             False)
+
+            # Forward Integral
+            import copy
+            from astropy import units as u
+
+            forward = copy.deepcopy(orbifit)
+            backward = copy.deepcopy(orbifit)
+            forward.integrate((np.linspace(0, 1e9, 2000) * u.yr), energistics.orbigistics().pot)
+            backward.integrate((np.linspace(0, -1e9, 2000) * u.yr), energistics.orbigistics().pot)
+            llsf, bbsf, llsb, bbsb = forward.ll((np.linspace(0, 0.7e9, 2000) * u.yr)).value, \
+                                     forward.bb((np.linspace(0, 0.7e9, 2000) * u.yr)).value, \
+                                     backward.ll((np.linspace(0, -0.15e9, 2000) * u.yr)).value, \
+                                     backward.bb((np.linspace(0, -0.15e9, 2000) * u.yr)).value
+            lls, bbs = np.concatenate([llsf, llsb]), np.concatenate([bbsf, bbsb])
+            lls = [d - 360 if d > 180 else d for d in lls]
+
+            specgrapher = graphutils.spec_graph()
+            fig, axs = specgrapher.lb_orbits(orig_data[[True if d == clust
+                                                        else False
+                                                        for d in clusterer.labels_]],
+                                             0.3e9, [-180, 180],
+                                             [-90, 90], None,
+                                             line=False, points=4000)
+            axs.scatter(lls, bbs, color='lime', marker='o', s=3)
+            # Misc axis things
+            axs.set_facecolor("k")
+            axs.grid(True, which='major', alpha=1, linewidth=0.25, color='white')
+            axs.grid(True, which='minor', alpha=1, linewidth=0.25, color='white')
+            axs.grid(color="white")
+            savepath = os.path.join(savedir, str(clust) + ".png")
+            import matplotlib.pyplot as plt
+
+            plt.savefig(savepath, dpi=300, transparent=False)
+            plt.close()
+
+    # Check mets
+    for clust in list(set(clusterer.labels_)):
+
+        # Get metallicity + dispersion
+        indices = np.where(clusterer.labels_==clust)[0]
+        fehs = orig_data['feh'][indices]
+        from astropy.stats import sigma_clipped_stats
+        mean, med, std = sigma_clipped_stats(fehs)
+        print(clust, mean, med, std)

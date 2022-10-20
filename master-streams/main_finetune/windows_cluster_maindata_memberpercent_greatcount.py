@@ -34,11 +34,8 @@ if __name__ == "__main__":
 
                     clusters_to_try.append(clust)
 
-
     # Set up data
-    table = hdfutils.hdf5_writer(windows_directories.datadir,
-                                 ascii_info.asciiname).read_table(ascii_info.fullgroup,
-                                                                  ascii_info.fullset)
+    table = writer.read_table(ascii_info.fullgroup,ascii_info.fullset)
     table = galcentricutils.angular().get_polar(table)
 
     # Generate the grid of great circles to try for the "first pass"
@@ -69,7 +66,7 @@ if __name__ == "__main__":
     # Map
     import multiprocessing, windows_multiprocessing
     pool = multiprocessing.Pool(8)
-    results = pool.map(windows_multiprocessing.flatfork_greatcircle_optimize_memberpercent, zipped)
+    results = pool.map(windows_multiprocessing.finetune_greatcircle_optimize_memberpercent, zipped)
     pool.close()
 
     # Format results from results
@@ -80,11 +77,9 @@ if __name__ == "__main__":
         poles_maxdists.append(result[2])
 
     # Save the best_circles to a table.
-    writer = hdfutils.hdf5_writer(windows_directories.datadir, ascii_info.flatfork_asciiname)
     table = Table()
     table['clust_to_try'] = clusters_to_try
     thetapoles, phipoles = np.array(poles_found).T
     table['theta'] = thetapoles
     table['phi'] = phipoles
     writer.write_table("greatcircles_preliminary", "greatcircles", table)
-

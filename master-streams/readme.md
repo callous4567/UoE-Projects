@@ -77,4 +77,7 @@ Hopefully you find this repository useful. If you're another student following t
 I hadn't a clue about stellar streams or anything else, and frankly I'm garbage with statistics. Nonetheless, I had fun,
 and hopefully my code will help you with whatever you are trying to do. 
 
+# master_streams_new and more... 
 
+Lots of recent updates will result in a new write-up t.b.d. In the mean time, some crossmatch routines, catalogue reduction, etc
+and that sort of thing. Will update later. 
