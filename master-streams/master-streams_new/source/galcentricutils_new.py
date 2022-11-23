@@ -114,6 +114,27 @@ class galconversion(object):
 
     # Convert Galactic to ICRS (modified for nowrite)
     def nowrite_GAL_to_ICRS(self, table):
+        """
+        Convert astropy table from Galactic to ICRS frame (RETAINING GAL COLUMNS.) No epoch propagation.
+        Note that azimuthal proper motions are assumed to be without the usual cos(b) term. The table has a set of
+        required columns, including...
+
+        l :
+            deg
+        b :
+            deg
+        dist :
+            kpc
+        dmu_l :
+            mas/yr
+        dmu_b :
+           mas/yr
+        vlos :
+            kms^-1
+
+        :param table: astropy table
+        :return: astropy table
+        """
         # Set up HDF and grab table, and SkyCoord objects for all targets.
         #writer = hdfutils.hdf5_writer(hdfdir, hdfname)
         #table = writer.read_table(group, set)

@@ -1,69 +1,67 @@
 import os
 from astropy.io import fits
-from astropy.table import Table
+import numpy as np
 import windows_directories_new
+import pickle
 
-load = True
-
-dr4dir = os.path.join(windows_directories_new.lamodir, "LAMOST_value_addcat_DR4.fits")
-dr7dir = os.path.join(windows_directories_new.lamodir, "dr7_LRS_vat.fits")
+num_match_stars = 10000 # number of stars for dr7-4 comparison
+load = True # should I load the match?
+dr4dir = os.path.join(windows_directories_new.lamodir, "LAMOST_value_addcat_DR4.fits") # where is VAC for dr4
+dr7dir = os.path.join(windows_directories_new.lamodir, "dr7_LRS_vat.fits") # where is VAC for dr7
 
 with fits.open(dr4dir, mode='readonly', memmap=True) as hdul:
-    # Data (which is an astropy table when loaded.)
     dr4data = hdul[1].data
 with fits.open(dr7dir, mode='readonly', memmap=True) as hdul:
-    # Data (which is an astropy table when loaded.)
     dr7data = hdul[1].data
 
-if load != True:
+if load != True: # generate the match
 
-    # Select a random assortment from dr7data (say, 10,000 stars.)
-    import numpy as np
-    selection = np.random.randint(0, len(dr7data), 10000)
+    # Select a random assortment from dr7data (num_match_stars of them.)
+    selection = np.random.randint(0, len(dr7data), num_match_stars)
     dr7data_subset = dr7data[selection]
 
+    # Only need the ra/decs anyway.
     ra1, dec1, ra2, dec2 = dr7data_subset['ra'], dr7data_subset['dec'], dr4data['RA'], dr4data['DEC']
     ra1, dec1, ra2, dec2 = np.radians(ra1), np.radians(dec1), np.radians(ra2), np.radians(dec2)
-
     dr4data, dr7data = None, None
 
     from APOGEE_standalone import radecmatch_argmin_memlim
     matches, truefalse = radecmatch_argmin_memlim(ra1, dec1, ra2, dec2)
-    matches, truefalse = list(matches), list(truefalse)
+    """
+    radecmatch_argmin_memlim uses argmin 1-by-1 to generate matches (slow process but avoids generating an N^2 matrix.)
+    if you want a more conclusive match, use radecmatch
+    this will use the munkres algorithm at the cost of generating an N^2 matrix (computationally expensive/memory exp.)
+    """
+    matches, truefalse = list(matches), list(truefalse) # julia types not usable
     matches, truefalse = np.asarray(matches), np.asarray(truefalse)
     found = np.where(truefalse==True)[0]
-    import pickle
     with open(os.path.join(windows_directories_new.lamodir, "matchfound.txt"), 'wb') as f:
         pickle.dump(obj=[selection, matches, found], file=f)
 
     load = True
 
-if load == True:
+if load == True: # plot/compare match graphically
 
     with fits.open(dr4dir, mode='readonly', memmap=True) as hdul:
-        # Data (which is an astropy table when loaded.)
         dr4data = hdul[1].data
     with fits.open(dr7dir, mode='readonly', memmap=True) as hdul:
-        # Data (which is an astropy table when loaded.)
         dr7data = hdul[1].data
 
-    import pickle
-    import numpy as np
     with open(os.path.join(windows_directories_new.lamodir, "matchfound.txt"), 'rb') as f:
         selection, matches, found = pickle.load(file=f)
 
-    # Clip the matches/etc/data/etc
+    # Clip the matches/etc/data/etc appropriately
     matches = matches.T[1]
     dr7data_subset = dr7data[selection][found]
     dr4data = dr4data[matches][found]
-    truefalse = np.where(dr4data['DIST']>0.1)[0]
+    truefalse = np.where(dr4data['DIST']>0.1)[0] # remove odd artefact (bad datapoints with DIST ~= 0)
     dr7data_subset=dr7data_subset[truefalse]
     dr4data=dr4data[truefalse]
 
-    dr4data['DIST']/=1000
+    dr4data['DIST']/=1000 # convert to kpc
     dr4data['ERR_DIST']/=1000
 
-    # Prepare correlation plots
+    # Columns for comparison
     columns = ["d_kpc_", "RV"]
     columns_2 = ["DIST", "VR"]
     columns_errs = ["e_d_kpc_", "eRV"]
@@ -89,6 +87,7 @@ if load == True:
         :param columns_labels_old: labels for matplotlib
         :param columns_labels_new: labels for matplotlib
         :param savedir: directory to save graphs
+        :param lims: list/array of tuples of limits for each (set None to default to sigclip.) See twod_graph.corr_plot
         :return: -
 
         """

@@ -144,18 +144,9 @@ Quick 'n easy but not perfect for dense fields.
 end 
 
 
-"""
 
-Get matches between stars using argmin on a distance matrix (basically assuming a 1-1 match exists, guaranteed- close/identical matches 
-can cause issues.) 
 
-Distance as usual in mas.
-
-Use alternative if large arrays are involved and memory is intensive.
-
-"""
-argmin_resolution = 0.01 
-@fastmath function radecmatch_argmin(ra1::PyArray{Float64}, dec1::PyArray{Float64}, ra2::PyArray{Float64}, dec2::PyArray{Float64})
+@fastmath function radecmatch_argmin(ra1::PyArray{Float64}, dec1::PyArray{Float64}, ra2::PyArray{Float64}, dec2::PyArray{Float64}, argmin_resolution::Int64)
 
     ra1 = pyconvert(Array{Float64}, ra1)
     dec1 = pyconvert(Array{Float64}, dec1)
@@ -185,7 +176,8 @@ argmin_resolution = 0.01
     return matches, truefalse 
 
 end 
-@fastmath function radecmatch_argmin_memlim(ra1::PyArray{Float64}, dec1::PyArray{Float64}, ra2::PyArray{Float64}, dec2::PyArray{Float64})
+
+@fastmath function radecmatch_argmin_memlim(ra1::PyArray{Float64}, dec1::PyArray{Float64}, ra2::PyArray{Float64}, dec2::PyArray{Float64}, argmin_resolution::Int64)
 
     ra1 = pyconvert(Array{Float64}, ra1)
     dec1 = pyconvert(Array{Float64}, dec1)
@@ -193,6 +185,7 @@ end
     dec2 = pyconvert(Array{Float64}, dec2)
 
     matches = Vector{Tuple{Int64,Int64}}(undef, size(ra1)[1])
+    distances = zeros(Float64, size(ra1)[1])
     truefalse = ones(Bool, size(ra1)[1])
 
     @simd for i in 1:size(ra1)[1]
@@ -202,6 +195,7 @@ end
 
         # Get argmin (the match) which is the column index  
         col_ind = argmin(distvector)
+        distances[i] = distvector[col_ind]
 
         # Set them to matches tuple 
         @inbounds matches[i] = (i, col_ind)
@@ -216,7 +210,6 @@ end
 
     println("We succeeded in matching! :D Returning the Julia values.")
 
-    return matches, truefalse 
-
+    return matches, distances, truefalse 
 end 
 

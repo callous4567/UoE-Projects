@@ -3,6 +3,7 @@ import itertools
 import os
 import time
 
+import numba.core.types
 import numpy as np
 from astropy.stats import sigma_clipped_stats
 from scipy.stats import gaussian_kde
@@ -311,8 +312,21 @@ class twod_graph(object):
         else:
             plt.savefig(savepath + ".png", dpi=300)
 
-    # Correlation scatter plots with error bars in 2D
     def corr_plot(self, val1, val2, val1err, val2err, xlabel, ylabel, savepath=None, lims=None):
+
+        """
+        Correlation scatter plots with error bars in 2D, exported as png. Modify if PGF or alt. needed.
+
+        :param val1: array values x
+        :param val2: array values y
+        :param val1err: array errors x
+        :param val2err: array errors y
+        :param xlabel: can be latex
+        :param ylabel: can be latex
+        :param savepath: explicit
+        :param lims: None if 3-sigmal sigclip desired
+        :return: -
+        """
 
         # Set up figure
         fig, axs = plt.subplots(nrows=1, ncols=1, figsize=(8,8))
@@ -538,7 +552,7 @@ class threed_graph(object):
         :param savedexdir: path after imgdir
         :param browser: bool
         :param outliers: bool
-        :return:
+        :return: -
         """
 
         # Need arrays. Make sure.
@@ -1364,7 +1378,6 @@ class spec_graph(object):
                 print("Failed removing image in graphtuils/sofie", image)
                 time.sleep(9999999999)
 
-
     # Orbit graphing. Take an orbit, a data table, and produce a menagerie of plots demonstrating the fit.
     def orbiplot(self, table, clustering, clust_to_fit, orbit, integration_time, number_of_steps, directory, unique_text, method='dopr54_c'):
 
@@ -1543,3 +1556,68 @@ class spec_graph(object):
             except:
                 plt.savefig(savepath)
         plt.show()
+
+    # Compare two identically-sized catalogues for correlation in pmra,pmdec,dist,vlos
+    def four_correlation_catalogue(self, cat1, cat2, cat1_name, cat2_name, savepath=None):
+
+        from scipy.optimize import curve_fit
+        from numba import njit
+        from astropy.stats import sigma_clipped_stats
+
+        fig, axs = plt.subplots(nrows=2, ncols=2)
+        columns = ['pmra', 'pmdec', 'vlos', 'dist'] # errors not necessarily available/propagated
+        labels = [r'$\mu_\alpha$', r'$\mu_\delta$', r'$v_{\textrm{los}}$', r'$\textrm{d}$']
+
+        for column in columns: # if nan/inf, will be -1. +1 makes a 0, while 0->True.
+            isnan_cat1 = np.where(-1*np.isnan(cat1[column]) + 1 == True)[0]
+            cat1, cat2 = cat1[isnan_cat1], cat2[isnan_cat1]
+            isnan_cat2 = np.where(-1*np.isnan(cat2[column]) + 1 == True)[0]
+            cat1, cat2 = cat1[isnan_cat2], cat2[isnan_cat2]
+            isinf_cat1 = np.where(-1*np.isinf(cat1[column]) + 1 == True)[0]
+            cat1, cat2 = cat1[isinf_cat1], cat2[isinf_cat1]
+            isinf_cat2 = np.where(-1*np.isinf(cat2[column]) + 1 == True)[0]
+            cat1, cat2 = cat1[isinf_cat2], cat2[isinf_cat2]
+
+        @njit(fastmath=True)
+        def straight_line(x, m, c):
+            return m*x + c
+
+        for i in range(2):
+            for j in range(2):
+                ai = 2*i + j
+                column, label = columns[ai], labels[ai]
+                xdata, ydata = cat1[column], cat2[column]
+                print(xdata, ydata)
+                popt, pcov = curve_fit(xdata=xdata, ydata=ydata, p0=np.array([1,0]),f=straight_line)
+                ydata_fitted = straight_line(xdata, *popt)
+                cross_corr = np.corrcoef(xdata, ydata)[0,1]
+                meanx, medx, stdx = sigma_clipped_stats(xdata)
+                meany, medy, stdy = sigma_clipped_stats(ydata)
+                axs[i,j].grid(color='pink', which='major')
+                axs[i,j].plot(xdata, xdata, color='black', lw=0.1)
+                axs[i,j].plot(xdata, ydata_fitted, color='green', lw=0.1)
+                axs[i,j].scatter(xdata, ydata, marker='x', color='red', s=0.1)
+                axs[i,j].set(xlabel=cat1_name + " " + label,
+                             ylabel=cat2_name + " " + label,
+                             xlim=[meanx-5*stdx, meanx+5*stdx],
+                             ylim=[meany-5*stdy, meany+5*stdy])
+
+        if savepath == None:
+            plt.show(dpi=300)
+        else:
+            plt.savefig(savepath, dpi=300)
+
+    # Compare parallax to spectrophotometric distance element-wise
+    def parallax_versus_distance(self, cat1, savepath):
+
+        fig, axs = plt.subplots(nrows=1, ncols=1)
+        pardist = 1/cat1['parallax']
+        epardist = pardist * cat1['parallax_error']/cat1['parallax']
+        axs.errorbar(pardist, cat1['dist'], xerr=epardist, yerr=cat1['edist'],
+                     color='black', ecolor='red', marker='x', ls='none', elinewidth=0.2, markersize=(1/len(cat1))**(1/4), zorder=0)
+        axs.plot(pardist, pardist, color='green', lw=0.1, alpha=1, zorder=1)
+        axs.set(xlabel="parallax distance / kpc",
+                ylabel="spectrophotometric distance / kpc",
+                ylim=[np.min(pardist), np.max(pardist)])
+        axs.grid(which='major', color='pink')
+        plt.savefig(savepath, dpi=300)
