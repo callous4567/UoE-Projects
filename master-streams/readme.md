@@ -4,7 +4,7 @@ This is the GitHub repository for my (poorly named, I know- I don't know what I 
 You'll find all the code I used here. I'll do my best to clean it up a bit *in the future* and perhaps add some documentation,
 but I make no promises. I'm a somewhat busy guy, after all! *wink* 
 
-*Note* This repository is still in use- any undocumented material is well... undocumented! :D 
+*Note* This repository is still in use- any undocumented material is well... undocumented! :D (True as of 25/11/22.) 
 
 ## What the hell does that title even mean?
 The title refers to the work taken in the thesis. This broadly fits into the following steps-
