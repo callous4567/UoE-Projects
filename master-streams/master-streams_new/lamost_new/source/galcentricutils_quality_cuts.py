@@ -68,7 +68,7 @@ class quality_cuts(object):
             plt.close()
             plt.clf()
 
-        return indices_to_keep
+        return indices_to_keep, indices_to_remove
 
     def feh_cut(self, table, cut):
 
@@ -81,11 +81,12 @@ class quality_cuts(object):
         :return: indices
         """
 
-        indices = np.where(table['feh'] < cut)
+        indices_to_keep = np.where(table['feh'] < cut)
+        indices_to_remove = np.where(table['feh'] >= cut)
 
-        return indices
+        return indices_to_keep, indices_to_remove
 
-    def fancy_feh_cut(self, table, extra_text=None):
+    def fancy_feh_cut(self, table, extra_text=None, min_samples=7):
 
         R, vR, vT, z, vz, phi = self.orbigist.get_leftgalpy(table) # Get R in units of kpc
         feh = table['feh'] # get fehs
@@ -102,7 +103,7 @@ class quality_cuts(object):
         clusterer = flat.HDBSCAN_flat(X=twod_vectors,
                                       n_clusters=2,
                                       min_cluster_size=int(len(feh)/10),
-                                      min_samples=7,
+                                      min_samples=min_samples,
                                       metric='l2',
                                       algorithm='best',
                                       prediction_data=True)
@@ -136,7 +137,7 @@ class quality_cuts(object):
             plt.close()
             plt.clf()
 
-        return indices_to_keep
+        return indices_to_keep, indices_to_remove
 
 
     def bound_cut(self, table):
@@ -150,9 +151,10 @@ class quality_cuts(object):
         """
 
         E = fast_energistics_new().default_E_c_vals(table)
-        indices = np.where(E<=0)[0]
+        indices_to_keep = np.where(E<=0)[0]
+        indices_to_remove = np.where(E>0)[0]
 
-        return indices
+        return indices_to_keep,indices_to_remove
 
     def zmax_cuts(self, table, zmax,
                   time_to_integrate,
@@ -263,7 +265,7 @@ class quality_cuts(object):
             plt.clf()
 
         # Return
-        return indices_to_keep
+        return indices_to_keep, indices_to_remove
 
     @staticmethod
     @njit(fastmath=True)
@@ -337,7 +339,7 @@ class quality_cuts(object):
             plt.close()
             plt.clf()
 
-        return indices_to_keep
+        return indices_to_keep, indices_to_remove
 
     def GSE_cut(self, table, extra_text=None):
 
@@ -394,4 +396,4 @@ class quality_cuts(object):
             plt.close()
             plt.clf()
 
-        return indices_to_keep
+        return indices_to_keep, indices_to_remove

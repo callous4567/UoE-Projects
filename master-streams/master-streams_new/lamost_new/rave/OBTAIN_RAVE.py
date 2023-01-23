@@ -24,7 +24,7 @@ if run_rave == True:
 
     service_name = 'rave-survey.org' # set up tap
     url = "https://www.rave-survey.org/tap"
-    token = 
+    token = "387e0bbae743459bf29744ebf1c436ee6cbc48d9"
 
     # Setup authorization
     tap_session = requests.Session()
@@ -271,7 +271,7 @@ if run_bdasp_distance_hist == True:
 
     service_name = 'rave-survey.org' # set up tap
     url = "https://www.rave-survey.org/tap"
-    token = 
+    token = "387e0bbae743459bf29744ebf1c436ee6cbc48d9"
 
     # Setup authorization
     tap_session = requests.Session()

@@ -9,6 +9,7 @@ Double check, though!!!
 
 # The index for the entire star catalogue
 asciiname = "stardata.hdf5"
+finetune_asciiname = "finetune_stardata.hdf5"
 flatfork_asciiname = "flatfork_stardata.hdf5"
 
 # Group/set of the combined catalogue ***see LAMOST_2MASS_GAIA... this now has the DR7 LAMOST instead.***
@@ -34,7 +35,6 @@ with open(windows_directories.duplimontedir + "\\" + ascii_info.bhb + "\\L_0.txt
 add .cluster.txt for cluster list
 add .txt for pure [l1,l2,l3] vector list 
 """
-
 duplimonte_number = 1000
 duplimonte_saveids = [("L_{}").format(d) for d in [str(d) for d in range(duplimonte_number)]]
 duplimonte_L4D_saveids = [("L4D_{}").format(d) for d in [str(d) for d in range(duplimonte_number)]]
@@ -52,22 +52,30 @@ fulldata_minpar_L4D = fulldata_minpar
 fulldata_minpar_LE = fulldata_minpar
 minpars_allgroups = [bhb_minpar, gcs_minpar, kgiant_minpar, lamostk_minpar]
 
-# ID for the GSE in the flatfork
+# Numclust for flat HDBSCAN
+fine_nclust = 24
+flat_nclust = 24
+
+# ID for the GSE in the flatfork/finetune (for the final run- this should be assuaged earlier on.)
+finetune_GSE_ID = 23
 flatfork_GSE_ID = 23
 
 # Custom-set the range for orbifits/etc
 import numpy as np
 clusters_to_maindata_orbifit = np.arange(0,24,1)
-flatfork_clusters_to_maindata_orbifit = np.arange(0,24,1)
+finetune_clusters_to_maindata_orbifit = np.arange(0,fine_nclust,1)
+flatfork_clusters_to_maindata_orbifit = np.arange(0,flat_nclust,1)
 
 # The save-ids for all the generated orbit fits
 n_carlo = 50
 orbifit_saveids = [("orbifit_instance_{0:.0f}").format(d) for d in range(n_carlo)]
+finetune_orbifit_saveids = [("finetune_orbifit_instance_{0:.0f}").format(d) for d in range(n_carlo)]
 flatfork_orbifit_saveids = [("flatfork_orbifit_instance_{0:.0f}").format(d) for d in range(n_carlo)]
 
 # For the maindata
 n_carlo_maindata = 50
 orbifit_maindata_saveids = [("orbifit_instance_maindata_{0:.0f}").format(d) for d in range(n_carlo_maindata)]
+finetune_orbifit_maindata_saveids = [("finetune_orbifit_instance_maindata_{0:.0f}").format(d) for d in range(n_carlo_maindata)]
 flatfork_orbifit_maindata_saveids = [("flatfork_orbifit_instance_maindata_{0:.0f}").format(d) for d in range(n_carlo_maindata)]
 
 # Save the monte results

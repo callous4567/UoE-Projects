@@ -54,13 +54,28 @@ if __name__ == "__main__" and process_vat == True:
     # Create the join
     from astropy.table import join
     dr7_LRS_stellar = join(dr7_LRS_vat, dr7_LRS_stellar, keys=["objID"])
+    dr7_LRS_stellar['objID'] = np.array(dr7_LRS_stellar['objID'], int)
     dr7_LRS_stellar.write(vatstellarjoin_dir, overwrite=True)
 
 # Should I crossmatch the LAMOST dataset with Gaia DR3 using Vizier, obtaining all the columns of interest?
-LAMOST_GAIA_GAIA = True
+"""
+Some notes...
+- Match those with valid mag3 in LAMOST to Gaia by requiring |mag3-Gaia G| <= 0.25 (or so) 
+- Require <= 3 arcseconds 
+- If mag3 match isn't done, set gmatch_flag to False (else True)
+- stars without mag3 get NaN for gmatch_flag 
+- Remove duplicates in post (can't figure out how to do this with ADQL that easily so yeah)
+- Vizier alternatively provides the same functionality but without the magnitude match using xMatch instead of ADQL
+- No RUWE cleaning done yet. Produce statistics and histograms on the matching/etc next. 
+"""
+LAMOST_GAIA_GAIA = False
 vizier_comparison = False
-debug = True
+debug = False
+subdebug = False
 if __name__ == "__main__" and LAMOST_GAIA_GAIA == True:
+
+    # Matchbyg cache for debug.
+    mgcache = os.path.join(windows_directories_new.lamodir, "QUICKCACHE_MATCHBYG.fits")
 
     # Gaia columns that we are fishing for. Note that objID is turned to objid thanks to ADQL HATING CAPITAL LETTERS!!!
     gaia_COLS_OF_INTEREST = [
@@ -88,6 +103,7 @@ if __name__ == "__main__" and LAMOST_GAIA_GAIA == True:
         'pmra_pmdec_corr',
         'ruwe',
     ]
+    import gaia_utils_standalone
 
     if vizier_comparison == True: # get a vizier match for comparison- note that it may fail if Vizier is busy a lot.
 
@@ -97,8 +113,8 @@ if __name__ == "__main__" and LAMOST_GAIA_GAIA == True:
         with fits.open(vatstellarjoin_dir, mode='readonly', memmap=True) as hdul:
             # "gaia_source_id" is dr2_source_id inside this.
             dr7_LRS_vatstellar = Table(hdul[1].data)[['Ra', 'Dec', 'objID', 'mag3']]
+            print("The length of vatstellar is...", len(dr7_LRS_vatstellar))
 
-        import gaia_utils_standalone
         vizier_xmatch = gaia_utils_standalone.xmatch_gaiadr3(dr7_LRS_vatstellar,
                                                              'Ra',
                                                              'Dec',
@@ -113,11 +129,19 @@ if __name__ == "__main__" and LAMOST_GAIA_GAIA == True:
                                      ['xmatch_angdist', 'ra', 'dec', 'ra_obs', 'dec_obs', 'gaiadr3_source_id',
                                       'phot_g_mean_mag'])
         vizier_xmatch['xmatch_magdist'] = np.abs(vizier_xmatch['mag3']-vizier_xmatch['phot_g_mean_mag'])
+
         vizier_xmatch.write(os.path.join(windows_directories_new.lamodir, "vizier_test_xmatch.fits"), overwrite=True)
         print("The length of the Vizier equivalent is... ", len(vizier_xmatch))
         del vizier_xmatch
 
     if debug == False:
+
+        with fits.open(os.path.join(windows_directories_new.lamodir, "vizier_test_xmatch.fits"), mode='readonly', memmap=True) as hdul:
+            viztable = Table(hdul[1].data)
+            print("The length of the Vizier equivalent is... ", len(viztable))
+            print("Now running the standard Gaia ADQL matches...")
+        del viztable
+
         # Now do the regular match with all our extra stuff
         with fits.open(vatstellarjoin_dir, mode='readonly', memmap=True) as hdul:
             # "gaia_source_id" is dr2_source_id inside this.
@@ -125,179 +149,331 @@ if __name__ == "__main__" and LAMOST_GAIA_GAIA == True:
 
         # Condense catalogue for the sake of matching
         dr7_crosscat = dr7_LRS_vatstellar[["Ra", "Dec", "objID", "mag3"]]
+
+        print("Length of the original vatstellar is...", len(dr7_crosscat))
 
         del dr7_LRS_vatstellar
 
         import gaia_utils_standalone
 
         valid_g_indices = np.where(np.abs(dr7_crosscat['mag3']) < 25)[0] # indices w/ a mag3/lamost-r/~Gaia G magnitude
+        print("Valid g is of length...", valid_g_indices)
         nog_indices = np.where(np.abs(dr7_crosscat['mag3']) >= 25)[0] # indices w/o
+        print("Without g-band magnitude...", len(nog_indices))
 
         # Get the best possible quality matches (to within 3 arcseconds, 0.3 magnitudes)
-        matched_by_g = gaia_utils_standalone.xmatch_gaiadr3_conesearch_gmatch(dr7_crosscat[valid_g_indices],
-                                                                              gaia_COLS_OF_INTEREST,
-                                                                              3000,
-                                                                              0.3,
-                                                                              'Ra', 'Dec', 'mag3',
-                                                                              True,
-                                                                              _USE_LITE=False)
-        matched_by_g['gmatch_flag'] = 1
-        matched_by_g.write("QUICKCACHE_MATCHBYG.fits", overwrite=True)
+        if subdebug == False:
+            matched_by_g = gaia_utils_standalone.xmatch_gaiadr3_conesearch_gmatch(dr7_crosscat[valid_g_indices],
+                                                                                  gaia_COLS_OF_INTEREST,
+                                                                                  3000,
+                                                                                  0.3,
+                                                                                  'Ra', 'Dec', 'mag3',
+                                                                                  True,
+                                                                                  _USE_LITE=False)
+            matched_by_g['gmatch_flag'] = 1
+            print("gmatched length is... ", len(matched_by_g))
 
-    else: # debug is true
+            # Quickly cache it.
+            matched_by_g.write(mgcache, overwrite=True)
 
-        # Now do the regular match with all our extra stuff
-        with fits.open(vatstellarjoin_dir, mode='readonly', memmap=True) as hdul:
-            # "gaia_source_id" is dr2_source_id inside this.
-            dr7_LRS_vatstellar = Table(hdul[1].data)
+        else:
 
-        # Condense catalogue for the sake of matching
-        dr7_crosscat = dr7_LRS_vatstellar[["Ra", "Dec", "objID", "mag3"]]
+            with fits.open("QUICKCACHE_MATCHBYG.fits", mode='readonly', memmap=True) as hdul:
+                # "gaia_source_id" is dr2_source_id inside this.
+                matched_by_g = Table(hdul[1].data)
+            print("Gmatches done #1! Now to find the ones that weren't matched by mag3...")
 
-        valid_g_indices = np.where(np.abs(dr7_crosscat['mag3']) < 25)[0] # indices w/ a mag3/lamost-r/~Gaia G magnitude
-        nog_indices = np.where(np.abs(dr7_crosscat['mag3']) >= 25)[0] # indices w/o
+            # Deprecated/too slow.
+            #@njit(fastmath=True)
+            #def find_unmatched_by_g(base_ids, matched_ids):
+            #    """
+            #    Return INDICES of elements from base_ids not in matched_ids: comparison by integer value not by index.
+            #    :param base_ids: array 1d
+            #    :param matched_ids: array 1d
+            #    :return: array 1d integers
+            #    """
+            #    where_in_base_unmatched_bool = np.zeros(np.shape(base_ids), dtype=numba.types.bool_)
+            #    for num,i in enumerate(base_ids):
+            #        if i not in matched_ids:
+            #            where_in_base_unmatched_bool[num] = True
+            #    return np.where(where_in_base_unmatched_bool==True)[0]
 
-        del dr7_LRS_vatstellar
-
-        with fits.open("QUICKCACHE_MATCHBYG.fits", mode='readonly', memmap=True) as hdul:
-            # "gaia_source_id" is dr2_source_id inside this.
-            matched_by_g = Table(hdul[1].data)
-
-    print("Gmatches done #1")
-
-    # Deprecated/too slow.
-    #@njit(fastmath=True)
-    #def find_unmatched_by_g(base_ids, matched_ids):
-    #    """
-    #    Return INDICES of elements from base_ids not in matched_ids: comparison by integer value not by index.
-    #    :param base_ids: array 1d
-    #    :param matched_ids: array 1d
-    #    :return: array 1d integers
-    #    """
-    #    where_in_base_unmatched_bool = np.zeros(np.shape(base_ids), dtype=numba.types.bool_)
-    #    for num,i in enumerate(base_ids):
-    #        if i not in matched_ids:
-    #            where_in_base_unmatched_bool[num] = True
-    #    return np.where(where_in_base_unmatched_bool==True)[0]
-
-    print("Now finding unmatched_by_g...")
-
-    import gaia_utils_standalone
-    unmatched_by_g = gaia_utils_standalone.jl_setdiff1dbyindices(
-        np.array(dr7_crosscat['objID'][valid_g_indices], np.int64),
-        np.array(matched_by_g['objid'], np.int64)
-    )
-
-    unmatched_by_g = [np.where(d == dr7_crosscat['objID'][valid_g_indices])[0][0] for d in unmatched_by_g]
-    print(unmatched_by_g)
-    unmatched_by_g = dr7_crosscat[valid_g_indices[unmatched_by_g]]
-
-    print("Found unmatched by g!")
-
-    unmatched_by_g = gaia_utils_standalone.xmatch_gaiadr3_conesearch_gmatch(unmatched_by_g,
-                                                                            gaia_COLS_OF_INTEREST,
-                                                                            3000,
-                                                                            _RA_COLNAME='Ra',
-                                                                            _DEC_COLNAME='Dec',
-                                                                            _G_COLNAME='mag3',
-                                                                            _USE_LITE=False)
-    unmatched_by_g['gmatch_flag'] = 0
-
-    # match not considering G-band magnitude similarity
-    print("Now matching without g...")
-    match_with_nog = gaia_utils_standalone.xmatch_gaiadr3_conesearch_gmatch(dr7_crosscat[nog_indices],
-                                                                            gaia_COLS_OF_INTEREST,
-                                                                            3000,
-                                                                            _RA_COLNAME='Ra',
-                                                                            _DEC_COLNAME='Dec',
-                                                                            _G_COLNAME='mag3',
-                                                                            _USE_LITE=False)
-    match_with_nog['gmatch_flag'] = np.NaN
-
-    # stack them up
-
-    print("Vstacking!")
-    dr7_crosscat = vstack([matched_by_g, unmatched_by_g, match_with_nog])
-
-    dr7_crosscat.write("QUICKSAVE_TEST.fits", overwrite=True)
-    dr7_crosscat.rename_column('source_id', 'gaiadr3_source_id')
-
-    # evaluate distance for the match using small-separation formulae https://en.wikipedia.org/wiki/Haversine_formula
-    @njit(fastmath=True)
-    def haversine(lon1, lon2, lat1, lat2):
-
-        """
-        Compute the haversine angular distance in latitude-longitude coordinates. Input must be in units of radians.
-        Note: the haversine distance formula breaks down for points that are antipodal to each-other... be warned!
-        :param lon1:
-        :param lon2:
-        :param lat1:
-        :param lat2:
-        :return:
-        """
-
-        return 2*np.arcsin(
-            np.sqrt(
-                (np.sin((lat2 - lat1)/2))**2 + (np.cos(lat2))*(np.cos(lat1))*((np.sin((lon2-lon1)/2))**2)
+            """
+            # This process takes too long and is very slow... try it using Astropy 
+            import gaia_utils_standalone
+            unmatched_by_g = gaia_utils_standalone.jl_setdiff1dbyindices(
+                np.array(dr7_crosscat['objID'][valid_g_indices], np.int64),
+                np.array(matched_by_g['objid'], np.int64)
             )
+            """
+
+            unmatched_by_g = dr7_crosscat[valid_g_indices]
+            unmatched_by_g['rowdex'] = np.arange(0, len(unmatched_by_g), 1)
+            matched_by_g.rename_column('objid', 'objID')
+            from astropy.table import join
+            in_dr7subcat_and_matched_by_g = join(unmatched_by_g, matched_by_g, keys='objID')
+            print("Number of stars with valid mag3 that have been successfully matched...",
+                  len(in_dr7subcat_and_matched_by_g))
+            in_dr7subcat_and_matched_by_g.rename_column("objID", "objid")
+            matched_by_g.rename_column("objID", "objid")
+            rowdices = in_dr7subcat_and_matched_by_g['rowdex']
+            del in_dr7subcat_and_matched_by_g
+            unmatched_by_g.remove_rows(rowdices)
+            print("Number of stars with valid mag3 that have not been successfully matched...",
+                  len(unmatched_by_g))
+
+            print("Matching these stars...")
+            unmatched_by_g = gaia_utils_standalone.xmatch_gaiadr3_conesearch_gmatch(unmatched_by_g,
+                                                                                    gaia_COLS_OF_INTEREST,
+                                                                                    3000,
+                                                                                    _RA_COLNAME='Ra',
+                                                                                    _DEC_COLNAME='Dec',
+                                                                                    _G_COLNAME='mag3',
+                                                                                    _USE_LITE=False)
+            unmatched_by_g['gmatch_flag'] = 0
+
+            print("The number of stars in unmatched_by_g...", len(unmatched_by_g))
+
+            # match not considering G-band magnitude similarity
+            print("Now matching stars without valid mag3...")
+            match_with_nog = gaia_utils_standalone.xmatch_gaiadr3_conesearch_gmatch(dr7_crosscat[nog_indices],
+                                                                                    gaia_COLS_OF_INTEREST,
+                                                                                    3000,
+                                                                                    _RA_COLNAME='Ra',
+                                                                                    _DEC_COLNAME='Dec',
+                                                                                    _G_COLNAME='mag3',
+                                                                                    _USE_LITE=False)
+            match_with_nog['gmatch_flag'] = np.NaN
+
+            print("The number of stars with no mag3 that has been matched is... ", len(match_with_nog))
+
+            # stack them up
+
+            print("Vstacking!")
+            dr7_crosscat = vstack([matched_by_g, unmatched_by_g, match_with_nog])
+
+            dr7_crosscat.write("QUICKSAVE_TEST.fits", overwrite=True)
+            dr7_crosscat.rename_column('source_id', 'gaiadr3_source_id')
+
+            # evaluate distance for the match using small-separation formulae https://en.wikipedia.org/wiki/Haversine_formula
+            @njit(fastmath=True)
+            def haversine(lon1, lon2, lat1, lat2):
+
+                """
+                Compute the haversine angular distance in latitude-longitude coordinates. Input must be in units of radians.
+                Note: the haversine distance formula breaks down for points that are antipodal to each-other... be warned!
+                :param lon1:
+                :param lon2:
+                :param lat1:
+                :param lat2:
+                :return:
+                """
+
+                return 2*np.arcsin(
+                    np.sqrt(
+                        (np.sin((lat2 - lat1)/2))**2 + (np.cos(lat2))*(np.cos(lat1))*((np.sin((lon2-lon1)/2))**2)
+                    )
+                )
+            print("Haversining!")
+            dr7_crosscat['xmatch_angdist'] = haversine(
+                np.deg2rad(dr7_crosscat['ra']),
+                np.deg2rad(dr7_crosscat['ra_obs']),
+                np.deg2rad(dr7_crosscat['dec']),
+                np.deg2rad(dr7_crosscat['dec_obs']),
+            )
+            mas = (2*np.pi / 360)*(1/3600)*(1/1000)
+            dr7_crosscat['xmatch_angdist'] /= mas
+            dr7_crosscat['xmatch_magdist'] = np.abs(dr7_crosscat['phot_g_mean_mag'] - dr7_crosscat['g_obs'])
+
+            # Rename back objID
+            dr7_crosscat.rename_column('objid', 'objID')
+
+            del matched_by_g
+            del unmatched_by_g
+            del match_with_nog
+
+            # All the queries are done and we have xmatch angdists. Now doing all the joins.
+            print("All the queries are done and we have xmatch angdists. Now doing all the joins.")
+
+            # Select columns of interest from vatstellar that we can make use of (including for the join.)
+            vatstellar_COLS_OF_INTEREST = [
+                "d_kpc_",
+                "e_d_kpc_",
+                "rv",
+                "rv_err",
+                "feh",
+                "feh_err",
+                "objID"
+            ]
+            vatstellar_RENAMED_C_O_I = [
+                'dist',
+                'edist',
+                'vlos',
+                'evlost',
+                'feh',
+                'efeh',
+                'objID'
+            ]
+
+            print("Now running the join to vatstellar...")
+            # get back vatstellar
+            with fits.open(vatstellarjoin_dir, mode='readonly', memmap=True) as hdul:
+                # "gaia_source_id" is dr2_source_id inside this.
+                dr7_LRS_vatstellar = Table(hdul[1].data)[vatstellar_COLS_OF_INTEREST]
+                dr7_LRS_vatstellar.rename_columns(vatstellar_COLS_OF_INTEREST, vatstellar_RENAMED_C_O_I)
+
+            # Join it to the master on "objID"
+            from astropy.table import join
+            dr7_gaia_gaia = join(dr7_crosscat, dr7_LRS_vatstellar, keys="objID")
+            del dr7_LRS_vatstellar
+            del dr7_crosscat
+
+            # Write it to disk
+            total_rows_found = len(dr7_gaia_gaia)
+            print("The total number of rows found in the crosscat from Gaia is... ", total_rows_found)
+            print("Removing duplicates now!")
+
+            # Check the objID duplicates.
+            objID = dr7_gaia_gaia['objID']
+            u, indices, counts = np.unique(objID, return_index=True, return_counts=True)
+            print("Gaia-Gaia test objIDs...", len(u))
+
+
+            @njit(fastmath=True)
+            def find_duplicates(angDists_full, ORDERED_valsfull, valsunique, ORDERED_uniqueindices, countsunique):
+                """
+                Remove duplicates from a crossmatch based on argDist (select the duplicate with the lowest value for argDist
+                which itself can be provided in any unit- it really is just a np.min() issue.)
+                :param angDists_full: array-like
+                :param ORDERED_valsfull: array-like, order as the astropy table, all the values in the table
+                :param valsunique: array-like: the unique elements of indices_full- order must equal countsunique
+                :param ORDERED_uniqueindices: array-like, ordered the same as valsunique, indices for valsunique
+                :param countsunique: array-like with the number of instances that valsunique appears in valsfull
+                :return: indices corresponding to a unique selection from ORDERED_valsfull for astropy table slicing
+                """
+
+                if len(valsunique) != len(countsunique):
+                    raise ValueError("The cardinalities valsunique::Vector and countsunique::Vector not equal.")
+                if len(valsunique) != len(ORDERED_uniqueindices):
+                    raise ValueError(
+                        "The cardinalities valsunique::Vector and ORDERED_uniqueindices::Vector not equal.")
+
+                for i in range(len(valsunique)):
+                    if countsunique[i] >= 2:
+                        sub_indices = np.where(ORDERED_valsfull == valsunique[i])[0]
+                        ORDERED_uniqueindices[i] = sub_indices[
+                            np.argmin(
+                                angDists_full[sub_indices]
+                            )
+                        ]
+                return ORDERED_uniqueindices
+
+
+            # Get the better indices
+            ORDERED_uniqueindices = find_duplicates(
+                np.array(dr7_gaia_gaia['xmatch_angdist'], float),
+                np.array(objID, int),
+                np.array(u, int),
+                np.array(indices, int),
+                np.array(counts, int)
+            )
+
+            dr7_gaia_gaia = dr7_gaia_gaia[ORDERED_uniqueindices]
+            dr7_gaia_gaia.sort("objID")
+
+
+            dr7_gaia_gaia.write(dr7_gaia_gaia_dir, overwrite=True)
+
+            # Remove our old mgcache
+            os.remove(mgcache)
+
+    if debug == True:
+
+        # get back final gaia-gaia
+        #with fits.open(dr7_gaia_gaia_dir, mode='readonly', memmap=True) as hdul:
+        #    # "gaia_source_id" is dr2_source_id inside this.
+        #    dr7_gaia_gaia = Table(hdul[1].data)
+
+        # Grab the vizier table
+        with fits.open(os.path.join(windows_directories_new.lamodir, "vizier_test_xmatch.fits"), mode='readonly', memmap=True) as hdul:
+            viztable = Table(hdul[1].data)
+
+        # Check the objID duplicates.
+        objID = viztable['objID']
+        objID = np.array(objID, int)
+
+        # Thanks https://stackoverflow.com/questions/11528078/determining-duplicate-values-in-an-array
+        print("Viztable objIDs...", len(np.unique(objID, return_index=True)[0]))
+
+        # get back final gaia-gaia
+        with fits.open(dr7_gaia_gaia_dir, mode='readonly', memmap=True) as hdul:
+            # "gaia_source_id" is dr2_source_id inside this.
+            dr7_gaia_gaia = Table(hdul[1].data)
+
+        # Check the objID duplicates.
+        objID = dr7_gaia_gaia['objID']
+        u, indices, counts = np.unique(objID, return_index=True, return_counts=True)
+        print("Gaia-Gaia test objIDs...", len(u))
+
+        @njit(fastmath=True)
+        def find_duplicates(angDists_full, ORDERED_valsfull, valsunique, ORDERED_uniqueindices, countsunique):
+            """
+            Remove duplicates from a crossmatch based on argDist (select the duplicate with the lowest value for argDist
+            which itself can be provided in any unit- it really is just a np.min() issue.)
+            :param angDists_full: array-like
+            :param ORDERED_valsfull: array-like, order as the astropy table, all the values in the table
+            :param valsunique: array-like: the unique elements of indices_full- order must equal countsunique
+            :param ORDERED_uniqueindices: array-like, ordered the same as valsunique, indices for valsunique
+            :param countsunique: array-like with the number of instances that valsunique appears in valsfull
+            :return: indices corresponding to a unique selection from ORDERED_valsfull for astropy table slicing
+            """
+
+            if len(valsunique) != len(countsunique):
+                raise ValueError("The cardinalities valsunique::Vector and countsunique::Vector not equal.")
+            if len(valsunique) != len(ORDERED_uniqueindices):
+                raise ValueError("The cardinalities valsunique::Vector and ORDERED_uniqueindices::Vector not equal.")
+
+            for i in range(len(valsunique)):
+                if countsunique[i] >= 2:
+                    sub_indices = np.where(ORDERED_valsfull==valsunique[i])[0]
+                    ORDERED_uniqueindices[i] = sub_indices[
+                        np.argmin(
+                            angDists_full[sub_indices]
+                        )
+                    ]
+            return ORDERED_uniqueindices
+
+        # Get the better indices
+        ORDERED_uniqueindices = find_duplicates(
+            np.array(dr7_gaia_gaia['xmatch_angdist'], float),
+            np.array(objID, int),
+            np.array(u, int),
+            np.array(indices, int),
+            np.array(counts, int)
         )
-    print("Haversining!")
-    dr7_crosscat['xmatch_angdist'] = haversine(
-        np.deg2rad(dr7_crosscat['ra']),
-        np.deg2rad(dr7_crosscat['ra_obs']),
-        np.deg2rad(dr7_crosscat['dec']),
-        np.deg2rad(dr7_crosscat['dec_obs']),
-    )
-    mas = (2*np.pi / 360)*(1/3600)*(1/1000)
-    dr7_crosscat['xmatch_angdist'] /= mas
-    dr7_crosscat['xmatch_magdist'] = np.abs(dr7_crosscat['phot_g_mean_mag'] - dr7_crosscat['g_obs'])
 
-    # Rename back objID
-    dr7_crosscat.rename_column('objid', 'objID')
+        dr7_gaia_gaia = dr7_gaia_gaia[ORDERED_uniqueindices]
+        dr7_gaia_gaia.sort("objID")
 
-    del matched_by_g
-    del unmatched_by_g
-    del match_with_nog
+crossmatch_statistics = True
+"""
+Take crossmatch results
+Analyze distribution of angular distance of match and magnitude difference of match 
+Note fraction matched/etc
+Compare vizier match to our magnitude match (vizier match only uses angular distance- a good control.)
+"""
+if __name__ == "__main__" and crossmatch_statistics == True:
 
-    # All the queries are done and we have xmatch angdists. Now doing all the joins.
-    print("All the queries are done and we have xmatch angdists. Now doing all the joins.")
+    # grab vizier table
+    with fits.open(os.path.join(windows_directories_new.lamodir, "vizier_test_xmatch.fits"), mode='readonly',
+                   memmap=True) as hdul:
+        viztable = Table(hdul[1].data)
 
-    # Select columns of interest from vatstellar that we can make use of (including for the join.)
-    vatstellar_COLS_OF_INTEREST = [
-        "d_kpc_",
-        "e_d_kpc_",
-        "rv",
-        "rv_err",
-        "feh",
-        "feh_err",
-        "objID"
-    ]
-    vatstellar_RENAMED_C_O_I = [
-        'dist',
-        'edist',
-        'vlos',
-        'evlost',
-        'feh',
-        'efeh',
-        'objID'
-    ]
+    # next grab our match
+    with fits.open(dr7_gaia_gaia_dir, mode='readonly',
+                   memmap=True) as hdul:
+        gaia_gaia = Table(hdul[1].data)
 
-    print("Now running the join to vatstellar...")
-    # get back vatstellar
-    with fits.open(vatstellarjoin_dir, mode='readonly', memmap=True) as hdul:
-        # "gaia_source_id" is dr2_source_id inside this.
-        dr7_LRS_vatstellar = Table(hdul[1].data)[vatstellar_COLS_OF_INTEREST]
-        dr7_LRS_vatstellar.rename_columns(vatstellar_COLS_OF_INTEREST, vatstellar_RENAMED_C_O_I)
-
-    # Join it to the master on "objID"
-    from astropy.table import join
-    dr7_crosscat = join(dr7_crosscat, dr7_LRS_vatstellar, keys="objID")
-    del dr7_LRS_vatstellar
-
-    # Write it to disk
-    total_rows_found = len(dr7_crosscat)
-    print("The total number of rows found in the crosscat from Gaia is... ", total_rows_found)
-    dr7_crosscat.write(dr7_gaia_gaia_dir, overwrite=True)
 
 # Section I of the TODO_LIST.txt
 SECTION_I = False
@@ -345,8 +521,7 @@ if __name__ == "__main__" and SECTION_I == True:
     from graphutils_new import spec_graph
     spec_graph().four_correlation_catalogue(jkgss, LAMOKGs, "SKGs", "LKGs")
     """
-    # Alright. Bad. We need to try propagating the epoch?
-    # TODO: Result: Didn't help at all.
+    # Alright. Bad. We need to try propagating the epoch? TODO: Note, this did not help at all... still few matches to Gaia.
     def propagate_astrometry(phi, theta, parallax, muphistar, mutheta, vrad, t0, t1):
         """
         Same as the PyGaia documentation. Propagate the astrometric parameters of a source from the reference epoch t0 to

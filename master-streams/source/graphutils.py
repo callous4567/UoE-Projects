@@ -262,7 +262,7 @@ class twod_graph(object):
 
     # Plot nclust vs. n for a monte-carloed clustering set.
     # Also subplot the PDF for the clustering.
-    def nclust_n(self, data, group):
+    def nclust_n(self, data, extra_text=None):
         # The n_clust/clustering plot.
         x = np.arange(0, len(data), 1)
         y = data
@@ -276,7 +276,10 @@ class twod_graph(object):
         axs[1].hist(y, bins=60, density=True, orientation='horizontal', color='black')
         axs[1].set(xlabel=r'$\rho$')
         #plt.suptitle("For " + group.replace("_","\_"))
-        plt.savefig(windows_directories.imgdir + "\\graph_nclust.png", dpi=300)
+        if extra_text == None:
+            plt.savefig(windows_directories.imgdir + "\\graph_nclust.png", dpi=300)
+        else:
+            plt.savefig(windows_directories.imgdir + "\\graph_nclust_" + extra_text + ".png", dpi=300)
         plt.show()
 
     # Create a very fancy histogram plot for the data! (PDF.)
@@ -305,6 +308,7 @@ class twod_graph(object):
             xvalues = np.linspace(np.min(data), np.max(data), 1000)
             yvalues = kde.evaluate(xvalues)
             plt.plot(xvalues, yvalues, lw=0.5, color='red')
+
 
 
         # Save the figure or plot it
@@ -751,7 +755,8 @@ class spec_graph(object):
                 plt.savefig(os.path.join(windows_directories.imgdir + "\\" + "vasiliev",savedexdir + ".png"), dpi=300)
             if savedexdir != None and flatfork == True:
                 plt.savefig(os.path.join(windows_directories.imgdir + "\\" + "flatfork_vasiliev",savedexdir + ".png"), dpi=300)
-
+            if savedexdir != None and flatfork == "finetune":
+                plt.savefig(os.path.join(windows_directories.imgdir + "\\" + "finetune_vasiliev",savedexdir + ".png"), dpi=300)
             plt.close()
             plt.clf()
 
@@ -834,6 +839,10 @@ class spec_graph(object):
                 if savedexdir != None and flatfork == True:
                     plt.savefig(
                         os.path.join(windows_directories.imgdir + "\\" + "flatfork_vasiliev", savedexdir + ".png"),
+                        dpi=300)
+                if savedexdir != None and flatfork == "finetune":
+                    plt.savefig(
+                        os.path.join(windows_directories.imgdir + "\\" + "finetune_vasiliev", savedexdir + ".png"),
                         dpi=300)
 
                 plt.close()
@@ -1025,6 +1034,17 @@ class spec_graph(object):
     # above but for theta/phi
     def clust_thetaphi(self, table, clustering, cluster_id=False, vasiliev=False, savedexdir=None, gcc_thetaphis=None,
                        flatfork=False):
+        """
+
+        :param table: astropy table
+        :param clustering: list/array (same length as table)
+        :param cluster_id: which cluster ID do you want to thetaphi for
+        :param vasiliev: True or False (to plot the Vasiliev sagittarius stream model or not)
+        :param savedexdir: filename to which "_thetaphi.png" is added
+        :param gcc_thetaphis: if not None, then plot the greatcircle provided
+        :param flatfork: False, True, or "finetune" changes directory to vasiliev, flatfork_vasiliev, or finetune_vasiliev
+        :return: -
+        """
         if cluster_id is False:
             # Get the n0 of clusters
             nclust = np.max(clustering) + 1
@@ -1100,6 +1120,12 @@ class spec_graph(object):
                 except:
                     pass
                 plt.savefig(windows_directories.imgdir + "\\" + "flatfork_vasiliev" + "\\" + savedexdir + "_thetaphi.png", dpi=300)
+            if savedexdir != None and flatfork == "finetune":
+                try:
+                    os.mkdir(windows_directories.imgdir + "\\" + "finetune_vasiliev")
+                except:
+                    pass
+                plt.savefig(windows_directories.imgdir + "\\" + "finetune_vasiliev" + "\\" + savedexdir + "_thetaphi.png", dpi=300)
             # Show
             #plt.show()
 
@@ -1168,6 +1194,12 @@ class spec_graph(object):
                 except:
                     pass
                 plt.savefig(windows_directories.imgdir + "\\" + "flatfork_vasiliev" + "\\" + savedexdir + "_thetaphi.png", dpi=300)
+            if savedexdir != None and flatfork == "finetune":
+                try:
+                    os.mkdir(windows_directories.imgdir + "\\" + "finetune_vasiliev")
+                except:
+                    pass
+                plt.savefig(windows_directories.imgdir + "\\" + "finetune_vasiliev" + "\\" + savedexdir + "_thetaphi.png", dpi=300)
             # Show
             #plt.show()
 

@@ -84,12 +84,25 @@ def setup_master():
 if do_setup == True:
     setup_master()
 
-# Threshold of number of tidal radii within which stars are removed
-rt_mult = 3
+rt_mult = 3 # remove stars with rt_mult tidal radii
 @njit(fastmath=True)
 def remove_gcs(x_s,y_s,z_s,
                x_gc,y_gc,z_gc,
                _rt_gcs):
+
+    """
+    Return a true-false 1d array on whether to retain or remove stars after globular cluster subtraction, to within
+    rt_mult (see docs) tidal radii, alongside a 1d array of which GCC the object belonged too (by index.)
+
+    :param x_s: stars x (kpc) 1d array-like
+    :param y_s: stars y (kpc) 1d array-like
+    :param z_s: stars z (kpc) 1d array-like
+    :param x_gc: gcs x (kpc) 1d array-like
+    :param y_gc: gcs y (kpc) 1d array-like
+    :param z_gc: gcs z (kpc) 1d array-like
+    :param _rt_gcs: tidal radii (kpc)
+    :return:
+    """
 
     _xyz_stars = np.empty((len(x_s), 3), numba.types.float64)
     _xyz_gcs = np.empty((len(x_gc), 3), numba.types.float64)
@@ -98,6 +111,7 @@ def remove_gcs(x_s,y_s,z_s,
 
     # True/False for whether to retain/keep the star (if it's in a GC, then False. Default True)
     retain = np.ones(len(_xyz_stars), numba.types.boolean)
+    which_gc = -1*np.ones(len(_xyz_gcs), numba.types.int64)
 
     # Go through all the globular clusters
     for i in range(1, len(_xyz_gcs)):
@@ -109,7 +123,8 @@ def remove_gcs(x_s,y_s,z_s,
             if np.sqrt(np.sum((_xyz_gcs[i] - _xyz_stars[j])**2)) < rt_mult * _rt_gcs[i]:
 
                 retain[j] = False
+                which_gc[i] = i
 
     # Return
-    return retain
+    return retain, which_gc
 

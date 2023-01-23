@@ -13,8 +13,10 @@ class dirbuilder(object):
         self.orbidir()
         self.orbidebugdir()
         self.flatfork_duplimonte_kmeanshtmldir()
+        self.finetune_duplimonte_kmeanshtmldir()
         self.vasidir()
         self.flatfork_vasidir()
+        self.finetune_vasidir()
 
     # Build directory for building image/data directories
     def datimgdir(self):
@@ -94,6 +96,31 @@ class dirbuilder(object):
         except:
             pass
 
+    # For finetune too
+    def finetune_duplimonte_kmeanshtmldir(self):
+        try:
+            os.mkdir(imgdir + "\\finetune_kmeans_html")
+        except:
+            pass
+        try:
+            os.mkdir(imgdir + "\\finetune_xmeans_html")
+        except:
+            pass
+        for group in ascii_info.all_groups:
+            try:
+                try:
+                    os.mkdir(imgdir + "\\finetune_kmeans_html" + "\\duplimonte_kmeanshtml\\")
+                except:
+                    pass
+                os.mkdir(imgdir + "\\finetune_kmeans_html" + "\\duplimonte_kmeanshtml\\" + group)
+            except Exception as e:
+                pass
+        # and the full one
+        try:
+            os.mkdir(imgdir + "\\finetune_kmeans_html" + "\\duplimonte_kmeanshtml\\" + ascii_info.fullgroup)
+        except:
+            pass
+
     # Build cluster dir
     def clustdir(self):
         try:
@@ -101,7 +128,31 @@ class dirbuilder(object):
         except:
             pass
         try:
+            os.mkdir(windows_directories.clusterdir_fine)
+        except:
+            pass
+        try:
+            os.mkdir(windows_directories.clusterdir_flat)
+        except:
+            pass
+        try:
             os.mkdir(imgdir + "\\clustered")
+        except:
+            pass
+        try:
+            os.mkdir(windows_directories.clusterdir)
+        except:
+            pass
+        try:
+            os.mkdir(imgdir + "\\clustered_flatfork")
+        except:
+            pass
+        try:
+            os.mkdir(windows_directories.clusterdir)
+        except:
+            pass
+        try:
+            os.mkdir(imgdir + "\\clustered_finetune")
         except:
             pass
 
@@ -138,6 +189,13 @@ class dirbuilder(object):
     def flatfork_vasidir(self):
         try:
             os.mkdir(os.path.join(windows_directories.imgdir, "flatfork_vasiliev"))
+        except:
+            pass
+
+    # Vasiliev dir
+    def finetune_vasidir(self):
+        try:
+            os.mkdir(os.path.join(windows_directories.imgdir, "finetune_vasiliev"))
         except:
             pass
 

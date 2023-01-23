@@ -435,6 +435,7 @@ def crossmatch(ra1,dec1,ra2,dec2):
     """
     Recommend that len(ra1) < len(ra2). Returns the matches as a list of tuples. Removes matches that do not satisfy
     the resolution of which_delete. Tuple (a,b) gives the index from ra1 that matches the index in ra2.
+    TODO: Deprecated- a JL function has been made for crossmatching instead. See APOGEE_STANDALONE.
     """
 
     # Get distrix + do linear sum assignment + set up matches tuples
@@ -523,3 +524,4 @@ def monte_ICRSGAL_table(table):
     for row in table:
         row['edmu_l'], row['edmu_b'] = monte_ICRSGAL(*row[['ra','dec','b','pmra','pmra_error','pmdec','pmdec_error']])
     return table
+

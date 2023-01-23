@@ -1729,7 +1729,7 @@ class compclust(object):
 
     # For a group, get the entirety of the set and get the number of clusters per clustering.
     # Also generates a PDF for the set of a given clustering having n_clust.
-    def graph_nclust(self, group, energy=False, sofie=False):
+    def graph_nclust(self, group, energy=False, sofie=False, finetune=False):
         # Decide if using LxLyLzE or just LxLyLz
         if energy == True:
             # Load in the lists as a list of lists!
@@ -1739,6 +1739,10 @@ class compclust(object):
             # Load in the lists as a list of lists!
             arrays = [windows_directories.duplimontedir + "\\" + group + "\\" + d + ".cluster.txt" \
                       for d in ascii_info.duplimonte_L4D_saveids]
+        elif finetune == True:
+            # Load in the lists as a list of lists!
+            arrays = [windows_directories.duplimontedir + "\\" + group + "\\" + d + "_finetune.cluster.txt" \
+                      for d in ascii_info.duplimonte_saveids]
         else:
             # Load in the lists as a list of lists!
             arrays = [windows_directories.duplimontedir + "\\" + group + "\\" + d + ".cluster.txt" \
@@ -1752,7 +1756,10 @@ class compclust(object):
         # Get the num
         arrays = [self.nclust_get(d) for d in arrays]
         # Pass this to graphutils plotting to generate a plot
-        graphutils.twod_graph().nclust_n(arrays, group)
+        if finetune != False:
+            graphutils.twod_graph().nclust_n(arrays, str(group) + "_finetune_")
+        else:
+            graphutils.twod_graph().nclust_n(arrays, group)
 
     # Flatforked
     def flatfork_graph_nclust(self, group, energy=False, sofie=False):
