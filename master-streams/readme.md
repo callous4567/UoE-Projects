@@ -4,7 +4,9 @@ This is the GitHub repository for my (poorly named, I know- I don't know what I 
 You'll find all the code I used here. I'll do my best to clean it up a bit *in the future* and perhaps add some documentation,
 but I make no promises. I'm a somewhat busy guy, after all! *wink* 
 
-*Note* This repository is still in use- any undocumented material is well... undocumented! :D (True as of 25/11/22.) 
+*Note* This repository is still in use- any undocumented material is well... undocumented! :D (True as of 23/1/23.) I have to note,
+this code is just here for proof-of-concept. It works for me- if you download it and run it without modifying it for you, it won't work.
+Probably won't work. This is just here to show how I did things- not necessarily give a fully-working code. It's a backup for me, basically.
 
 ## What the hell does that title even mean?
 The title refers to the work taken in the thesis. This broadly fits into the following steps-
