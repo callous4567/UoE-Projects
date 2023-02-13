@@ -3,7 +3,7 @@ This is an empty readme. README.txt has some better information about how the co
 astrowrapper.py holds all base routines/utilities/etc
 main_runtime.py applies astrowrapper.py to the file tree/etc that I have generated.
 
-At some point I gave up generalising the code, and ended up integrating the file tree into astrowrapper.py. I will amend this in the coming summer, sorry-not-sorry.
+At some point I gave up generalising the code, and ended up integrating the file tree into astrowrapper.py. 
 
 This code relates to the Telescope Group Project undertaken at Edinburgh University in the 4th Year, specifically to the Star Clusters project.
 Included are:
